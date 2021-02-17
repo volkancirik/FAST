@@ -186,7 +186,7 @@ def setup(seed):
 def make_more_train_env(args, train_vocab_path, train_splits):
   setup(args.seed)
   image_features_list = ImageFeatures.from_args(args)
-  vocab = read_vocab(train_vocab_path)
+  vocab = read_vocab(train_vocab_path, args.language)
   tok = Tokenizer(vocab=vocab)
   train_env = R2RBatch(image_features_list, batch_size=args.batch_size,
                        splits=train_splits, tokenizer=tok,
