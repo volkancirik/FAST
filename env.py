@@ -1,3 +1,19 @@
+from torch.autograd import Variable
+import torch
+from utils import load_datasets, load_nav_graphs, structured_map, decode_base64, k_best_indices, try_cuda, spatial_feature_from_bbox
+from collections import namedtuple, defaultdict
+import itertools
+import pickle
+import paths
+import os.path
+import functools
+import networkx as nx
+import random
+import json
+import math
+import numpy as np
+import csv
+import MatterSim
 ''' Batched Room-to-Room navigation environment '''
 
 import os
@@ -7,28 +23,7 @@ module_path = os.path.abspath(os.path.join(file_path))
 sys.path.append(module_path)
 module_path = os.path.abspath(os.path.join(file_path, '..', '..', 'build'))
 sys.path.append(module_path)
-import MatterSim
-import csv
-import numpy as np
-import math
-import json
-import random
-import networkx as nx
-import functools
-import os.path
 
-import paths
-import pickle
-import os.path
-import sys
-import itertools
-
-from collections import namedtuple, defaultdict
-
-from utils import load_datasets, load_nav_graphs, structured_map, decode_base64, k_best_indices, try_cuda, spatial_feature_from_bbox
-
-import torch
-from torch.autograd import Variable
 
 csv.field_size_limit(sys.maxsize)
 
@@ -263,8 +258,11 @@ def make_sim(image_w, image_h, vfov):
   sim.setDiscretizedViewingAngles(True)
   sim.setCameraResolution(image_w, image_h)
   sim.setCameraVFOV(math.radians(vfov))
-  sim.init()
-  #sim.initialize()
+  try:
+    sim.init()
+  except:
+    sim.initialize()
+    pass
   return sim
 
 # def encode_action_sequence(action_tuples):
@@ -893,7 +891,7 @@ class EnvBatch():
 class R2RBatch():
   ''' Implements the Room to Room navigation task, using discretized viewpoints and pretrained features '''
 
-  def __init__(self, image_features_list, batch_size=100, seed=10, splits=['train'], tokenizer=None, beam_size=1, instruction_limit=None, prefix='R2R', language = 'en-OLD'):
+  def __init__(self, image_features_list, batch_size=100, seed=10, splits=['train'], tokenizer=None, beam_size=1, instruction_limit=None, prefix='R2R', language='en-OLD'):
     self.image_features_list = image_features_list
     self.data = []
     self.scans = []
@@ -903,9 +901,9 @@ class R2RBatch():
     counts = defaultdict(int)
 
     for item in load_datasets(splits, prefix=prefix):
-      path_id =  item['path_id']
+      path_id = item['path_id']
       count = counts[path_id]
-      new_path_id = '{}*{}'.format(path_id,count)
+      new_path_id = '{}*{}'.format(path_id, count)
       counts[path_id] += 1
       item['path_id'] = new_path_id
       # Split multiple instructions into separate entries
@@ -926,7 +924,7 @@ class R2RBatch():
         if tokenizer:
           self.tokenizer = tokenizer
           new_item['instr_encoding'], new_item['instr_length'] = tokenizer.encode_sentence(
-              instr, language = language)
+              instr, language=language)
         else:
           self.tokenizer = None
         self.data.append(new_item)
