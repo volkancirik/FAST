@@ -104,11 +104,12 @@ class Tokenizer(object):
         self.index_is_verb[i] = int(Tokenizer.is_verb(word))
 
   @staticmethod
-  def split_sentence(sentence, language = 'en-OLD'):
+  def split_sentence(sentence, language='en-OLD'):
     ''' Break sentence into a list of words and punctuation '''
     toks = []
     if 'en' in language:
-      tokens = [s.strip().lower() for s in Tokenizer.SENTENCE_SPLIT_REGEX.split(sentence.strip()) if len(s.strip()) > 0]
+      tokens = [s.strip().lower() for s in Tokenizer.SENTENCE_SPLIT_REGEX.split(
+          sentence.strip()) if len(s.strip()) > 0]
     else:
       tokens = [s.strip().lower() for s in sentence.split()]
     for word in tokens:
@@ -136,17 +137,20 @@ class Tokenizer(object):
         return True
     return False
 
-  def encode_sentence(self, sentence, language = 'en-OLD'):
+  def encode_sentence(self, sentence, language='en-OLD'):
     if len(self.word_to_index) == 0:
       sys.exit('Tokenizer has no vocab')
     encoding = []
 
+    unk, found = 0., 0.
     for word in Tokenizer.split_sentence(sentence,
-                                         language = language):
+                                         language=language):
       if word in self.word_to_index:
         encoding.append(self.word_to_index[word])
+        found += 1.0
       else:
         encoding.append(vocab_unk_idx)
+        unk += 1.0
     # encoding.append(vocab_eos_idx)
     #utterance_length = len(encoding)
     # if utterance_length < self.encoding_length:
@@ -154,7 +158,7 @@ class Tokenizer(object):
     # encoding = encoding[:self.encoding_length] # leave room for unks
 
     arr = np.array(encoding)
-    return arr, len(encoding)
+    return arr, len(encoding), unk, found
 
   def decode_sentence(self, encoding, break_on_eos=False, join=True):
     sentence = []

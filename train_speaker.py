@@ -12,6 +12,7 @@ import argparse
 import utils
 from utils import read_vocab, Tokenizer, timeSince, try_cuda
 from env import R2RBatch, ImageFeatures
+from test_env import TestR2RBatch
 from model import SpeakerEncoderLSTM, SpeakerDecoderLSTM
 from speaker import Seq2SeqSpeaker
 import eval_speaker
@@ -198,7 +199,12 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits,
   vocab = read_vocab(train_vocab_path, args.language)
   tok = Tokenizer(vocab=vocab)
 
-  train_env = R2RBatch(image_features_list, batch_size=batch_size,
+  if args.env == 'r2r':
+    BatchEnv = R2RBatch
+  else:  # TODO
+    raise NotImplemented('this environment not implemented', args.env)
+
+  train_env = BatchEnv(image_features_list, batch_size=batch_size,
                        splits=train_splits, tokenizer=tok,
                        prefix=args.prefix,
                        language=args.language)
@@ -215,18 +221,18 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits,
 
   test_envs = {}
   for split in test_splits:
-    b = R2RBatch(image_features_list, batch_size=batch_size,
+    b = BatchEnv(image_features_list, batch_size=batch_size,
                  splits=[split], tokenizer=tok,
                  instruction_limit=test_instruction_limit,
                  prefix=args.prefix,
                  language=args.language)
     e = eval_speaker.SpeakerEvaluation(
         [split], instructions_per_path=instructions_per_path,
-        prefix=args.prefix)
+        prefix=args.prefix)  # TODO
     test_envs[split] = (b, e)
 
   # test_envs = {
-  #     split: (R2RBatch(image_features_list, batch_size=batch_size,
+  #     split: (BatchEnv(image_features_list, batch_size=batch_size,
   #                      splits=[split], tokenizer=tok,
   #                      instruction_limit=test_instruction_limit,
   #                      prefix=args.prefix),
@@ -295,6 +301,7 @@ def train_val(args):
 def make_arg_parser():
   parser = argparse.ArgumentParser()
   ImageFeatures.add_args(parser)
+  parser.add_argument("--env", type=str, default='r2r')
   parser.add_argument(
       "--use_train_subset", action='store_true',
       help="use a subset of the original train data for validation")
@@ -303,7 +310,8 @@ def make_arg_parser():
   parser.add_argument("--no_save", action='store_true')
   parser.add_argument("--prefix", type=str, default='R2R')
   parser.add_argument("--language", type=str, default='en-OLD')
-  parser.add_argument('--glove_path',type=str, default='tasks/R2R/data/train_glove.npy')
+  parser.add_argument('--glove_path', type=str,
+                      default='tasks/R2R/data/train_glove.en-ALL.npy')
   return parser
 
 

@@ -14,18 +14,22 @@ import utils
 from utils import read_vocab, Tokenizer, vocab_pad_idx, timeSince, try_cuda
 from utils import module_grad, colorize, filter_param
 from env import R2RBatch, ImageFeatures
+
+
 from model import TransformerEncoder, EncoderLSTM, AttnDecoderLSTM, CogroundDecoderLSTM, ProgressMonitor, DeviationMonitor
 from model import SpeakerEncoderLSTM, DotScorer
 from follower import Seq2SeqAgent
 from scorer import Scorer
+
+from refer360_env import Refer360Batch, Refer360ImageFeatures
 import eval
-
+import refer360_eval
 from vocab import SUBTRAIN_VOCAB, TRAINVAL_VOCAB, TRAIN_VOCAB
-
+import pdb
 # MAX_INPUT_LENGTH = 80  # TODO make this an argument
 
 max_episode_len = 10
-#glove_path = 'tasks/R2R/data/train_glove.npy'
+# glove_path = 'tasks/R2R/data/train_glove.npy'
 # action_embedding_size = 2048+128
 # action_embedding_size = 24 + 128
 # action_embedding_size = 2048+24+128
@@ -43,8 +47,8 @@ weight_decay = 0.0005
 # FEATURE_SIZE = 483+128
 # FEATURE_SIZE = -1
 ###
-#log_every = 1000
-#save_every = 10000
+# log_every = 1000
+# save_every = 10000
 
 
 def get_model_prefix(args, image_feature_list):
@@ -185,13 +189,24 @@ def setup(seed):
 
 def make_more_train_env(args, train_vocab_path, train_splits):
   setup(args.seed)
-  image_features_list = ImageFeatures.from_args(args)
+  if args.env == 'r2r':
+    EnvBatch = R2RBatch
+    ImgFeatures = ImageFeatures
+  elif args.env == 'refer360':
+    EnvBatch = Refer360Batch
+    ImgFeatures = Refer360ImageFeatures
+  else:
+    raise NotImplementedError(
+        'this {} environment is not implemented.'.format(args.env))
+
+  image_features_list = ImgFeatures.from_args(args)
   vocab = read_vocab(train_vocab_path, args.language)
   tok = Tokenizer(vocab=vocab)
-  train_env = R2RBatch(image_features_list, batch_size=args.batch_size,
-                       splits=train_splits, tokenizer=tok,
-                       prefix=args.prefix,
-                       language=args.language)
+
+  train_env = EnvBatch(image_features_list,
+                       splits=train_splits,
+                       tokenizer=tok,
+                       args=args)
   return train_env
 
 
@@ -201,7 +216,6 @@ def make_scorer(args,
   bidirectional = args.bidirectional
 
   enc_hidden_size = hidden_size//2 if bidirectional else hidden_size
-  feature_size = FEATURE_SIZE
   traj_encoder = try_cuda(SpeakerEncoderLSTM(action_embedding_size, feature_size,
                                              enc_hidden_size, dropout_ratio, bidirectional=args.bidirectional))
   scorer_module = try_cuda(DotScorer(enc_hidden_size, enc_hidden_size))
@@ -261,24 +275,33 @@ def make_follower(args, vocab,
 
 def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
   setup(args.seed)
-  image_features_list = ImageFeatures.from_args(args)
+  if args.env == 'r2r':
+    EnvBatch = R2RBatch
+    ImgFeatures = ImageFeatures
+    Eval = eval.Evaluation
+  elif args.env == 'refer360':
+    EnvBatch = Refer360Batch
+    ImgFeatures = Refer360ImageFeatures
+    Eval = refer360_eval.Refer360Evaluation
+  else:
+    raise NotImplementedError(
+        'this {} environment is not implemented.'.format(args.env))
+
+  image_features_list = ImgFeatures.from_args(args)
 
   vocab = read_vocab(train_vocab_path, args.language)
   tok = Tokenizer(vocab=vocab)
-  train_env = R2RBatch(image_features_list,
-                       batch_size=args.batch_size,
+
+  train_env = EnvBatch(image_features_list,
                        splits=train_splits,
                        tokenizer=tok,
-                       prefix=args.prefix,
-                       language=args.language) if len(train_splits) > 0 else None
+                       args=args) if len(train_splits) > 0 else None
   test_envs = {
-      split: (R2RBatch(image_features_list,
-                       batch_size=args.batch_size,
+      split: (EnvBatch(image_features_list,
                        splits=[split],
                        tokenizer=tok,
-                       prefix=args.prefix,
-                       language=args.language),
-              eval.Evaluation([split], prefix=args.prefix))
+                       args=args),
+              Eval([split], args=args))
       for split in test_splits}
 
   feature_size = sum(
@@ -383,7 +406,10 @@ def train_val(args):
 
 def make_arg_parser():
   parser = argparse.ArgumentParser()
+
   ImageFeatures.add_args(parser)
+  Refer360ImageFeatures.add_args(parser)
+
   parser.add_argument("--load_scorer", type=str, default='')
   parser.add_argument("--load_follower", type=str, default='')
   parser.add_argument("--load_traj_encoder", type=str, default='')
@@ -413,10 +439,23 @@ def make_arg_parser():
   parser.add_argument("--use_train_subset", action='store_true',
                       help="use a subset of the original train data for validation")
   parser.add_argument("--use_test_set", action='store_true')
-  parser.add_argument("--seed", type=int, default=1)
+  parser.add_argument("--seed", type=int, default=10)
+  parser.add_argument("--beam_size", type=int, default=1)
   parser.add_argument("--prefix", type=str, default='R2R')
   parser.add_argument("--language", type=str, default='en-OLD')
-  parser.add_argument('--glove_path',type=str, default='tasks/R2R/data/train_glove.npy')
+  parser.add_argument('--glove_path', type=str,
+                      default='tasks/R2R/data/train_glove.npy')
+  parser.add_argument("--env", type=str, default='r2r')
+  parser.add_argument("--use_intermediate", action='store_true')
+  parser.add_argument("--error_margin", type=float, default=3.0)
+  parser.add_argument('--cache_root', type=str,
+                      default='/projects/vcirik/refer360/data/cached_data_15degrees/')
+  parser.add_argument('--image_list_file', type=str,
+                      default='/projects/vcirik/refer360/data/imagelist.txt')
+  parser.add_argument('--refer360_root', type=str,
+                      default='/projects/vcirik/refer360/data/continuous_grounding')
+  parser.add_argument("--add_asterix", action='store_true')
+
   return parser
 
 

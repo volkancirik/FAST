@@ -5,26 +5,25 @@ import json
 from collections import defaultdict
 import networkx as nx
 import numpy as np
+import random
 import pprint
 pp = pprint.PrettyPrinter(indent=4)  # NoQA
 from pprint import pprint
 
-from env import R2RBatch, ImageFeatures
+from refer360_env import Refer360Batch, Refer360ImageFeatures, load_datasets, make_sim
 import utils
-from utils import load_datasets, load_nav_graphs
-from follower import BaseAgent
 
-import pdb
+from follower import BaseAgent
 import train
 
 from collections import namedtuple
-
+import pdb
 EvalResult = namedtuple(
     "EvalResult", "nav_error, oracle_error, trajectory_steps, "
                   "trajectory_length, success, oracle_success, spl")
 
 
-class Evaluation(object):
+class Refer360Evaluation(object):
   ''' Results submission format:
       [{'instr_id': string,
         'trajectory':[(viewpoint_id, heading_rads, elevation_rads),]}] '''
@@ -33,35 +32,28 @@ class Evaluation(object):
                args=None):
 
     prefix = args.prefix
+    refer360_root = args.refer360_root
+    cache_root = args.cache_root
     error_margin = args.error_margin
-    add_asterix = args.add_asterix
 
-    self.error_margin = error_margin
     self.splits = splits
     self.gt = {}
     self.instr_ids = []
     self.scans = []
     self.instructions = {}
     counts = defaultdict(int)
-    for item in load_datasets(splits, prefix=prefix):
-
+    refer360_data = load_datasets(splits, root=refer360_root)
+    for item in refer360_data:
       path_id = item['path_id']
       count = counts[path_id]
+      new_path_id = '{}*{}'.format(path_id, count)
       counts[path_id] += 1
-      if add_asterix:
-        new_path_id = '{}*{}'.format(path_id, count)
-        item['path_id'] = new_path_id
+      item['path_id'] = new_path_id
 
       self.gt[item['path_id']] = item
       self.scans.append(item['scan'])
-      if prefix == 'R2R':
-        self.instr_ids += [
-            '{}_{}'.format(item['path_id'], i) for i in range(3)]
-      elif 'RxR' in prefix:
-        self.instr_ids += [
-            '{}_{}'.format(item['path_id'], i) for i in range(1)]
-      elif 'REVERIE' == prefix:
-        self.instr_ids += ['{}_{}'.format(item['path_id'], i) for i in
+      if prefix == 'refer360':
+        self.instr_ids += ['%s_%d' % (item['path_id'], i) for i in
                            range(len(item['instructions']))]
       else:
         raise NotImplementedError()
@@ -69,16 +61,20 @@ class Evaluation(object):
         self.instructions['{}_{}'.format(item['path_id'], j)] = instruction
     self.scans = set(self.scans)
     self.instr_ids = set(self.instr_ids)
-    self.graphs = load_nav_graphs(self.scans)
-    self.distances = {}
-    for scan, G in self.graphs.items():  # compute all shortest paths
-      self.distances[scan] = dict(nx.all_pairs_dijkstra_path_length(G))
+
+    sim = make_sim(cache_root,
+                   Refer360ImageFeatures.IMAGE_W,
+                   Refer360ImageFeatures.IMAGE_H,
+                   Refer360ImageFeatures.VFOV)
+    self.nodes = sim.nodes
+    self.distances = sim.distances
+    self.error_margin = error_margin*270.0  # error_margin * max FOV distance
 
   def _get_nearest(self, scan, goal_id, path):
     near_id = path[0][0]
-    near_d = self.distances[scan][near_id][goal_id]
+    near_d = self.distances[near_id][goal_id]
     for item in path:
-      d = self.distances[scan][item[0]][goal_id]
+      d = self.distances[item[0]][goal_id]
       if d < near_d:
         near_id = item[0]
         near_d = d
@@ -96,6 +92,7 @@ class Evaluation(object):
     else:
       print('int({}) or str({}) not in self.gt'.format(key, key))
       quit(1)
+
     start = gt['path'][0]
 
     assert start == path[0][0], \
@@ -103,13 +100,13 @@ class Evaluation(object):
     goal = gt['path'][-1]
     final_position = path[-1][0]
     nearest_position = self._get_nearest(gt['scan'], goal, path)
-    nav_error = self.distances[gt['scan']][final_position][goal]
-    oracle_error = self.distances[gt['scan']][nearest_position][goal]
+    nav_error = self.distances[final_position][goal]
+    oracle_error = self.distances[nearest_position][goal]
     trajectory_steps = len(path)-1
     trajectory_length = 0  # Work out the length of the path in meters
     prev = path[0]
     for curr in path[1:]:
-      trajectory_length += self.distances[gt['scan']][prev[0]][curr[0]]
+      trajectory_length += self.distances[prev[0]][curr[0]]
       prev = curr
 
     success = nav_error < self.error_margin
@@ -121,7 +118,7 @@ class Evaluation(object):
 
     sp_length = 0
     prev = gt['path'][0]
-    sp_length = self.distances[gt['scan']][gt['path'][0]][gt['path'][-1]]
+    sp_length = self.distances[gt['path'][0]][gt['path'][-1]]
     spl = 0.0 if nav_error >= self.error_margin else \
         (float(sp_length) / max(trajectory_length, sp_length))
 
@@ -140,7 +137,9 @@ class Evaluation(object):
     instr_ids = set(self.instr_ids)
 
     instr_count = 0
+    done = list()
     for instr_id, result in results.items():
+
       if instr_id in instr_ids:
         instr_count += 1
         instr_ids.remove(instr_id)
@@ -156,8 +155,25 @@ class Evaluation(object):
         self.scores['oracle_success'].append(
             eval_result.oracle_success)
         self.scores['spl'].append(eval_result.spl)
+
+        done.append((instr_id, instr_count))
         if 'score' in result:
           model_scores.append(result['score'])
+
+    rand_idx = random.choice(range(instr_count))
+    rand_result = results[done[rand_idx][0]]
+    key = done[rand_idx][0].split('_')[0]
+    if key in self.gt:
+      gt = self.gt[key]
+    elif int(key) in self.gt:
+      gt = self.gt[int(key)]
+
+    print('\n>>>>pred', [p[0] for p in rand_result['trajectory']])
+    print('\n>>>>gt', gt['path'])
+    print('\n>>>>gt-path', gt['gt_path'])
+    print('\n>>>>gt-annotationid', gt['annotationid'])
+    print('\n>>>>gt-actionid', gt['actionid'])
+    print('\n>>>>gt-instructions', gt['instructions'])
 
     assert len(instr_ids) == 0, \
         'Missing %d of %d instruction ids from %s' % (
@@ -289,13 +305,13 @@ class Evaluation(object):
 
 def eval_simple_agents(args):
   ''' Run simple baselines on each split. '''
-  img_features = ImageFeatures.from_args(args)
+  img_features = Refer360ImageFeatures.from_args(args)
   for split in ['train', 'val_seen', 'val_unseen', 'test']:
-    env = R2RBatch(img_features,
-                   batch_size=1,
-                   splits=[split],
-                   prefix=args.prefix)
-    ev = Evaluation([split])
+    env = Refer360Batch(img_features,
+                        batch_size=1,
+                        splits=[split],
+                        prefix=args.prefix)
+    ev = Refer360Evaluation([split])
 
     for agent_type in ['Stop', 'Shortest', 'Random']:
       outfile = '%s%s_%s_agent.json' % (
@@ -317,7 +333,7 @@ def eval_seq2seq():
   ]
   for outfile in outfiles:
     for split in ['val_seen', 'val_unseen']:
-      ev = Evaluation([split])
+      ev = Refer360Evaluation([split])
       score_summary, _ = ev.score_file(outfile % split)
       print('\n%s' % outfile)
       pp.pprint(score_summary)
@@ -331,7 +347,7 @@ def eval_outfiles(outfolder):
     for s in splits:
       if s in outfile:
         _splits.append(s)
-    ev = Evaluation(_splits)
+    ev = Refer360Evaluation(_splits)
     score_summary, _ = ev.score_file(outfile)
     print('\n', outfile)
     pp.pprint(score_summary)

@@ -891,7 +891,17 @@ class EnvBatch():
 class R2RBatch():
   ''' Implements the Room to Room navigation task, using discretized viewpoints and pretrained features '''
 
-  def __init__(self, image_features_list, batch_size=100, seed=10, splits=['train'], tokenizer=None, beam_size=1, instruction_limit=None, prefix='R2R', language='en-OLD'):
+  def __init__(self, image_features_list,
+               splits=['train'],
+               tokenizer=None,
+               instruction_limit=None,
+               args=None):
+    batch_size = args.batch_size
+    seed = args.seed
+    beam_size = args.beam_size
+    prefix = args.prefix
+    language = args.language
+
     self.image_features_list = image_features_list
     self.data = []
     self.scans = []
@@ -900,22 +910,16 @@ class R2RBatch():
 
     counts = defaultdict(int)
 
+    total_unk, total_found = 0, 0
     for item in load_datasets(splits, prefix=prefix):
       path_id = item['path_id']
       count = counts[path_id]
-      new_path_id = '{}*{}'.format(path_id, count)
       counts[path_id] += 1
-      item['path_id'] = new_path_id
-      # Split multiple instructions into separate entries
-      # if 'path_id' not in item:
-      #   print(item)
-      #   print('>>>', splits)
-      # assert item['path_id'] not in self.gt, '{} {} {} {} {} {}'.format(item['path_id'] not in self.gt,
-      #                                                                   item['path_id'], type(item['path_id']), self.gt.keys(), splits,prefix)
       self.gt[item['path_id']] = item
       instructions = item['instructions']
       if instruction_limit:
         instructions = instructions[:instruction_limit]
+
       for j, instr in enumerate(instructions):
         self.scans.append(item['scan'])
         new_item = dict(item)
@@ -923,11 +927,15 @@ class R2RBatch():
         new_item['instructions'] = instr
         if tokenizer:
           self.tokenizer = tokenizer
-          new_item['instr_encoding'], new_item['instr_length'] = tokenizer.encode_sentence(
+          new_item['instr_encoding'], new_item['instr_length'], unk, found = tokenizer.encode_sentence(
               instr, language=language)
+          total_found += found
+          total_unk += unk
         else:
           self.tokenizer = None
         self.data.append(new_item)
+    print('unk ratio: {:3.2f} {} {}'.format(
+        total_unk / (total_unk + total_found), total_unk, total_found))
     self.scans = set(self.scans)
     self.splits = splits
     self.seed = seed
