@@ -394,7 +394,8 @@ class Refer360Batch(R2RBatch):
     refer360_data = load_datasets(splits,
                                   root=refer360_root,
                                   use_intermediate=use_intermediate)
-    total_unk, total_found = 0, 0
+
+    total_unk, total_found, all_unk = 0, 0, set()
     for item in refer360_data:
       path_id = item['path_id']
       count = counts[path_id]
@@ -414,16 +415,17 @@ class Refer360Batch(R2RBatch):
         new_item['instructions'] = instr
         if tokenizer:
           self.tokenizer = tokenizer
-          new_item['instr_encoding'], new_item['instr_length'], unk, found = tokenizer.encode_sentence(
+          new_item['instr_encoding'], new_item['instr_length'], n_unk, n_found, unk = tokenizer.encode_sentence(
               instr, language=language)
-          total_found += found
-          total_unk += unk
+          total_found += n_found
+          total_unk += n_unk
+          all_unk |= unk
         else:
           self.tokenizer = None
         self.data.append(new_item)
     print('unk ratio: {:3.2f} {} {}'.format(
         total_unk / (total_unk + total_found), total_unk, total_found))
-
+    print('UNK vocab size and vocab:\n', len(all_unk), all_unk)
     self.scans = set(self.scans)
     self.splits = splits
     self.seed = seed

@@ -442,7 +442,7 @@ def make_arg_parser():
   parser.add_argument("--seed", type=int, default=10)
   parser.add_argument("--beam_size", type=int, default=1)
   parser.add_argument("--prefix", type=str, default='R2R')
-  parser.add_argument("--language", type=str, default='en-OLD')
+  parser.add_argument("--language", type=str, default='en-ALL')
   parser.add_argument('--glove_path', type=str,
                       default='tasks/R2R/data/train_glove.npy')
   parser.add_argument("--env", type=str, default='r2r')

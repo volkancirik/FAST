@@ -142,15 +142,16 @@ class Tokenizer(object):
       sys.exit('Tokenizer has no vocab')
     encoding = []
 
-    unk, found = 0., 0.
+    n_unk, n_found, unk = 0., 0., set()
     for word in Tokenizer.split_sentence(sentence,
                                          language=language):
       if word in self.word_to_index:
         encoding.append(self.word_to_index[word])
-        found += 1.0
+        n_found += 1.0
       else:
         encoding.append(vocab_unk_idx)
-        unk += 1.0
+        n_unk += 1.0
+        unk.add(word)
     # encoding.append(vocab_eos_idx)
     #utterance_length = len(encoding)
     # if utterance_length < self.encoding_length:
@@ -158,7 +159,7 @@ class Tokenizer(object):
     # encoding = encoding[:self.encoding_length] # leave room for unks
 
     arr = np.array(encoding)
-    return arr, len(encoding), unk, found
+    return arr, len(encoding), n_unk, n_found, unk
 
   def decode_sentence(self, encoding, break_on_eos=False, join=True):
     sentence = []
