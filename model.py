@@ -78,10 +78,13 @@ class EncoderLSTM(nn.Module):
     self.drop = nn.Dropout(p=dropout_ratio)
     self.num_directions = 2 if bidirectional else 1
     self.num_layers = num_layers
+
     self.embedding = nn.Embedding(vocab_size, embedding_size, padding_idx)
     self.use_glove = glove is not None
     if self.use_glove:
       print('Using GloVe embedding')
+      self.embedding = nn.Embedding(vocab_size, 300, padding_idx)
+      self.embedding_size = 300
       self.embedding.weight.data[...] = torch.from_numpy(glove)
       self.embedding.weight.requires_grad = False
     self.lstm = nn.LSTM(embedding_size, hidden_size, self.num_layers,
@@ -185,7 +188,7 @@ class SoftDotAttention(nn.Module):
 
     if mask is not None:
       # -Inf masking prior to the softmax
-      attn.data.masked_fill_(mask, -float('inf'))
+      attn.data.masked_fill_(mask.bool(), -float('inf'))
     attn = self.sm(attn)
     attn3 = attn.view(attn.size(0), 1, attn.size(1))  # batch x 1 x seq_len
 
@@ -222,7 +225,7 @@ class ContextOnlySoftDotAttention(nn.Module):
     attn = torch.bmm(context, target).squeeze(2)  # batch x seq_len
     if mask is not None:
       # -Inf masking prior to the softmax
-      attn.data.masked_fill_(mask, -float('inf'))
+      attn.data.masked_fill_(mask.bool(), -float('inf'))
     attn = self.sm(attn)
     attn3 = attn.view(attn.size(0), 1, attn.size(1))  # batch x 1 x seq_len
 
@@ -342,7 +345,7 @@ class BottomUpImageAttention(nn.Module):
     x = x_context * x_feature
     x = x / torch.norm(x, p=2, dim=2, keepdim=True)
     x = self.fc2(x).squeeze(-1)  # batch_size x max_num_detections
-    x.data.masked_fill_(bottom_up_features.no_object_mask, -float("inf"))
+    x.data.masked_fill_(bottom_up_features.no_object_mask.bool(), -float("inf"))
     # batch_size x 1 x max_num_detections
     attention = F.softmax(x, 1).unsqueeze(1)
     # batch_size x feat_size
@@ -374,7 +377,7 @@ class WhSoftDotAttentionCompact(nn.Module):
     attn = torch.bmm(context, target).squeeze(2)  # batch x seq_len
     if mask is not None:
       # -Inf masking prior to the softmax
-      attn.data.masked_fill_(mask, -float('inf'))
+      attn.data.masked_fill_(mask.bool(), -float('inf'))
     attn_sm = self.sm(attn)
     attn3 = attn_sm.view(attn.size(0), 1, attn.size(1))  # batch x 1 x seq_len
     context = v if v is not None else ctx
@@ -404,7 +407,7 @@ class WhSoftDotAttention(nn.Module):
     attn = torch.bmm(k, target).squeeze(2)  # batch x v_num
     # attn /= math.sqrt(self.v_dim) # scaled dot product attention
     if mask is not None:
-      attn.data.masked_fill_(mask, -float('inf'))
+      attn.data.masked_fill_(mask.bool(), -float('inf'))
     attn_sm = self.sm(attn)
     attn3 = attn_sm.view(attn.size(0), 1, attn.size(1))  # batch x 1 x v_num
     ctx = v if v is not None else k
@@ -462,7 +465,7 @@ class WhSoftDotAttention(nn.Module):
     attn = torch.bmm(k, target).squeeze(2)  # batch x v_num
     # attn /= math.sqrt(self.v_dim) # scaled dot product attention
     if mask is not None:
-      attn.data.masked_fill_(mask, -float('inf'))
+      attn.data.masked_fill_(mask.bool(), -float('inf'))
     attn_sm = self.sm(attn)
     attn3 = attn_sm.view(attn.size(0), 1, attn.size(1))  # batch x 1 x v_num
     ctx = v if v is not None else k
@@ -504,17 +507,22 @@ class AttnDecoderLSTM(nn.Module):
   '''
 
   def __init__(self, embedding_size, hidden_size, dropout_ratio,
-               feature_size=2048+128, image_attention_layers=None, num_head=8):
+               feature_size=2048+128,
+               visual_context_size=2048+128,
+               image_attention_layers=None,
+               num_head=8,
+               max_len =-1):
     super(AttnDecoderLSTM, self).__init__()
     self.embedding_size = embedding_size
     self.feature_size = feature_size
+    self.visual_context_size = visual_context_size
     self.hidden_size = hidden_size
     self.u_begin = try_cuda(Variable(
         torch.zeros(embedding_size), requires_grad=False))
     self.drop = nn.Dropout(p=dropout_ratio)
-    self.lstm = nn.LSTMCell(embedding_size+feature_size, hidden_size)
+    self.lstm = nn.LSTMCell(embedding_size+visual_context_size, hidden_size)
     self.visual_attention_layer = VisualSoftDotAttention(
-        hidden_size, feature_size)
+        hidden_size, self.visual_context_size)
     #self.text_attention_layer = SoftDotMultihead(hidden_size, num_head)
     self.text_attention_layer = SoftDotAttention(hidden_size)
     self.decoder2action = EltwiseProdScoring(hidden_size, embedding_size)
@@ -615,6 +623,7 @@ class CogroundDecoderLSTM(nn.Module):
 class ProgressMonitor(nn.Module):
   def __init__(self, embedding_size, hidden_size, text_len=80):
     super(ProgressMonitor, self).__init__()
+
     self.linear_h = nn.Linear(hidden_size + embedding_size, hidden_size)
     self.linear_pm = nn.Linear(text_len + hidden_size, 1)
     self.text_len = text_len

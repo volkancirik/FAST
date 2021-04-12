@@ -1,4 +1,3 @@
-
 import torch
 from torch import optim
 
@@ -13,12 +12,13 @@ import argparse
 import utils
 from utils import read_vocab, Tokenizer, vocab_pad_idx, timeSince, try_cuda
 from utils import module_grad, colorize, filter_param
+from utils import get_confusion_matrix_image, get_bar_image
 from env import R2RBatch, ImageFeatures
 
 
 from model import TransformerEncoder, EncoderLSTM, AttnDecoderLSTM, CogroundDecoderLSTM, ProgressMonitor, DeviationMonitor
 from model import SpeakerEncoderLSTM, DotScorer
-from follower import Seq2SeqAgent
+from follower import Seq2SeqAgent, RandomAgent
 from scorer import Scorer
 
 from refer360_env import Refer360Batch, Refer360ImageFeatures
@@ -26,29 +26,7 @@ import eval
 import refer360_eval
 from vocab import SUBTRAIN_VOCAB, TRAINVAL_VOCAB, TRAIN_VOCAB
 import pdb
-# MAX_INPUT_LENGTH = 80  # TODO make this an argument
-
-max_episode_len = 10
-# glove_path = 'tasks/R2R/data/train_glove.npy'
-# action_embedding_size = 2048+128
-# action_embedding_size = 24 + 128
-# action_embedding_size = 2048+24+128
-# action_embedding_size = 483+128
-# action_embedding_size = -1
-###
-
-hidden_size = 512
-dropout_ratio = 0.5
-learning_rate = 0.0001
-weight_decay = 0.0005
-# FEATURE_SIZE = 2048+128
-# FEATURE_SIZE = 24+128
-# FEATURE_SIZE = 2048+24+128
-# FEATURE_SIZE = 483+128
-# FEATURE_SIZE = -1
-###
-# log_every = 1000
-# save_every = 10000
+from tensorboardX import SummaryWriter
 
 
 def get_model_prefix(args, image_feature_list):
@@ -84,15 +62,20 @@ def eval_model(agent, results_path, use_dropout, feedback, allow_cheat=False):
 def train(args, train_env, agent, optimizers, n_iters, val_envs=None):
   ''' Train on training set, validating on both seen and unseen. '''
 
+
   if val_envs is None:
     val_envs = {}
-
+  split_string = "-".join(train_env.splits)
   print('Training with %s feedback' % args.feedback_method)
+  writer_path = os.path.join(args.PLOT_DIR, get_model_prefix(
+              args, train_env.image_features_list))
+  writer = SummaryWriter(writer_path)
+  print('tensorboard path is',writer_path)
 
   data_log = defaultdict(list)
   start = time.time()
 
-  split_string = "-".join(train_env.splits)
+
 
   def make_path(n_iter):
     return os.path.join(
@@ -113,10 +96,16 @@ def train(args, train_env, agent, optimizers, n_iters, val_envs=None):
     # Train for log_every interval
     env_name = 'train'
     agent.train(optimizers, interval, feedback=args.feedback_method)
-    _loss_str, losses = agent.get_loss_info()
+    _loss_str, losses, images = agent.get_loss_info()
     loss_str += env_name + ' ' + _loss_str
     for k, v in losses.items():
       data_log['%s %s' % (env_name, k)].append(v)
+      writer.add_scalar('{} {}'.format(env_name,k),v,iter)
+
+    for k,v in images.items():
+      img_conf = get_confusion_matrix_image(
+        [[str(v) for v in range(v.size(1))],[str(v) for v in range(v.size(0))]], v.cpu().numpy(), '')
+      writer.add_image(k, img_conf, iter)
 
     save_log = []
     # Run validation
@@ -125,10 +114,12 @@ def train(args, train_env, agent, optimizers, n_iters, val_envs=None):
       # Get validation loss under the same conditions as training
       agent.test(use_dropout=True, feedback=args.feedback_method,
                  allow_cheat=True)
-      _loss_str, losses = agent.get_loss_info()
+      _loss_str, losses, _ = agent.get_loss_info()
       loss_str += ', ' + env_name + ' ' + _loss_str
       for k, v in losses.items():
         data_log['%s %s' % (env_name, k)].append(v)
+        writer.add_scalar('{} {}'.format(env_name,k),v,iter)
+
 
       agent.results_path = '%s/%s_%s_iter_%d.json' % (
           args.RESULT_DIR, get_model_prefix(
@@ -139,13 +130,29 @@ def train(args, train_env, agent, optimizers, n_iters, val_envs=None):
       agent.test(use_dropout=False, feedback='argmax')
 
       print("evaluating on {}".format(env_name))
-      score_summary, _ = evaluator.score_results(agent.results)
+      score_summary, all_scores, score_analysis = evaluator.score_results(agent.results)
+
+      scores_path = make_path(iter) + "_%s_scores.npy" % (
+        env_name)
+      print('scores stats are dumped to %s' % scores_path)
+      with open(scores_path, 'wb') as f:
+        np.save(f,all_scores)
 
       for metric, val in sorted(score_summary.items()):
-        data_log['%s %s' % (env_name, metric)].append(val)
-        if metric in ['success_rate']:
-          loss_str += ', %s: %.3f' % (metric, val)
 
+        writer.add_scalar('{} {}'.format(env_name,metric),val,iter)
+        data_log['%s %s' % (env_name, metric)].append(val)
+        if metric in args.metrics.split(','):
+
+          for analysis in score_analysis:
+            keys = sorted(score_analysis[analysis][metric].keys())
+            means = [np.mean(score_analysis[analysis][metric][key]) for key in keys]
+            stds = [np.std(score_analysis[analysis][metric][key]) for key in keys]
+            x_pos = np.arange(len(keys))
+            img_bar =get_bar_image(x_pos, keys, means, stds)
+            writer.add_image(analysis+'_'+metric, img_bar, iter)
+
+          loss_str += ', %s: %.3f' % (metric, val)
           key = (env_name, metric)
           if key not in best_metrics or best_metrics[key] < val:
             best_metrics[key] = val
@@ -164,6 +171,7 @@ def train(args, train_env, agent, optimizers, n_iters, val_envs=None):
               last_model_saved[key] = [] +\
                   list(agent.modules_paths(model_path))
 
+
     print(('%s (%d %d%%) %s' % (
         timeSince(start, float(iter)/n_iters),
         iter, float(iter)/n_iters*100, loss_str)))
@@ -179,6 +187,7 @@ def train(args, train_env, agent, optimizers, n_iters, val_envs=None):
       df_path = '%s/%s_%s_log.csv' % (
           args.PLOT_DIR, get_model_prefix(
               args, train_env.image_features_list), split_string)
+      print('data_log written to',df_path)
       df.to_csv(df_path)
 
 
@@ -215,9 +224,10 @@ def make_scorer(args,
                 feature_size=-1):
   bidirectional = args.bidirectional
 
-  enc_hidden_size = hidden_size//2 if bidirectional else hidden_size
+  enc_hidden_size = int(args.hidden_size/2) if bidirectional else args.hidden_size
   traj_encoder = try_cuda(SpeakerEncoderLSTM(action_embedding_size, feature_size,
-                                             enc_hidden_size, dropout_ratio, bidirectional=args.bidirectional))
+                                             enc_hidden_size, args.dropout_ratio,
+                                             bidirectional=args.bidirectional))
   scorer_module = try_cuda(DotScorer(enc_hidden_size, enc_hidden_size))
   scorer = Scorer(scorer_module, traj_encoder)
   if args.load_scorer is not '':
@@ -232,26 +242,33 @@ def make_scorer(args,
 def make_follower(args, vocab,
                   action_embedding_size=-1,
                   feature_size=-1):
-  enc_hidden_size = hidden_size//2 if args.bidirectional else hidden_size
+  if args.random_baseline:
+    print('using random agent')
+    agent = RandomAgent
+    return agent
+
+  enc_hidden_size = int(args.hidden_size//2) if args.bidirectional else args.hidden_size
   glove = np.load(args.glove_path) if args.use_glove else None
   Encoder = TransformerEncoder if args.transformer else EncoderLSTM
   Decoder = CogroundDecoderLSTM if args.coground else AttnDecoderLSTM
-  word_embedding_size = 256 if args.coground else 300
-  encoder = try_cuda(Encoder(
-      len(vocab), word_embedding_size, enc_hidden_size, vocab_pad_idx,
-      dropout_ratio, bidirectional=args.bidirectional, glove=glove))
+  word_embedding_size = int(args.hidden_size / 2) if args.coground or args.bidirectional else args.hidden_size
+  encoder = try_cuda(Encoder(len(vocab), word_embedding_size, enc_hidden_size, vocab_pad_idx,args.dropout_ratio,
+                             bidirectional=args.bidirectional, glove=glove))
+
   decoder = try_cuda(Decoder(
-      action_embedding_size, hidden_size, dropout_ratio,
+      action_embedding_size, args.hidden_size, args.dropout_ratio,
       feature_size=feature_size, num_head=args.num_head,
       max_len=args.max_input_length))
+  if not args.coground and args.use_visited_embeddings:
+    action_embedding_size -= 64
   prog_monitor = try_cuda(ProgressMonitor(action_embedding_size,
-                                          hidden_size, text_len=args.max_input_length)) if args.prog_monitor else None
+                                          args.hidden_size, text_len=args.max_input_length)) if args.prog_monitor else None
   bt_button = try_cuda(BacktrackButton()) if args.bt_button else None
   dev_monitor = try_cuda(DeviationMonitor(action_embedding_size,
-                                          hidden_size)) if args.dev_monitor else None
+                                          args.hidden_size)) if args.dev_monitor else None
 
   agent = Seq2SeqAgent(
-      None, "", encoder, decoder, max_episode_len,
+      None, "", encoder, decoder, args.max_episode_len,
       max_instruction_length=args.max_input_length,
       attn_only_verb=args.attn_only_verb)
   agent.prog_monitor = prog_monitor
@@ -306,7 +323,10 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
 
   feature_size = sum(
       [featurizer.feature_dim for featurizer in image_features_list]) + 128
-
+  if args.use_visited_embeddings:
+    feature_size += 64
+  if args.use_oracle_embeddings:
+    feature_size += 64
   agent = make_follower(args, vocab,
                         action_embedding_size=feature_size,
                         feature_size=feature_size)
@@ -316,11 +336,10 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
 
 
 def train_setup(args, train_splits=['train']):
-  # val_splits = ['train_subset', 'val_seen', 'val_unseen']
   val_splits = ['val_seen', 'val_unseen']
-  # val_splits = ['val_unseen']
   if args.use_test_set:
-    val_splits = ['test']
+    val_splits = ['val_seen', 'val_unseen']
+#    val_splits = ['test_seen','test_unseen']
   if args.debug:
     args.log_every = 5
     args.n_iters = 10
@@ -375,8 +394,9 @@ def train_val(args):
     m_dict['scorer_all'] = agent.scorer.modules()
     m_dict['scorer_scorer'] = [agent.scorer.scorer]
 
-  optimizers = [optim.Adam(filter_param(m), lr=learning_rate,
-                           weight_decay=weight_decay) for m in m_dict[args.grad] if len(filter_param(m))]
+  optimizers = [optim.Adam(filter_param(m),
+                           lr=args.learning_rate,
+                           weight_decay=args.weight_decay) for m in m_dict[args.grad] if len(filter_param(m))]
 
   if args.use_pretraining:
     train(args, pretrain_env, agent, optimizers,
@@ -386,6 +406,7 @@ def train_val(args):
   train(args, train_env, agent, optimizers,
         args.n_iters, val_envs=val_envs)
 
+# TODO
 # Test set prediction will be handled separately
 # def test_submission(args):
 #     ''' Train on combined training and validation sets, and generate test
@@ -416,23 +437,32 @@ def make_arg_parser():
   parser.add_argument("--feedback_method",
                       choices=["sample", "teacher", "sample1step", "sample2step", "sample3step", "teacher+sample", "recover"], default="sample")
   parser.add_argument("--debug", action='store_true')
+
   parser.add_argument("--bidirectional", action='store_true')
+  parser.add_argument("--hidden_size", type=int, default=512)
+  parser.add_argument("--learning_rate", type=float, default=0.0001)
+  parser.add_argument("--weight_decay", type=float, default=0.0005)
+  parser.add_argument("--dropout_ratio", type=float, default=0.5)
   parser.add_argument("--transformer", action='store_true')
+
   parser.add_argument("--scorer", action='store_true')
   parser.add_argument("--coground", action='store_false')
   parser.add_argument("--prog_monitor", action='store_false')
   parser.add_argument("--dev_monitor", action='store_true')
   parser.add_argument("--bt_button", action='store_true')
   parser.add_argument("--soft_align", action='store_true')
-  parser.add_argument("--n_iters", type=int, default=20000)
-  parser.add_argument("--log_every", type=int, default=1000)
+  parser.add_argument("--n_iters", type=int, default=250000)
+  parser.add_argument("--log_every", type=int, default=10000)
   parser.add_argument("--save_every", type=int, default=10000)
   parser.add_argument("--max_input_length", type=int, default=80)
+  parser.add_argument("--max_episode_len", type=int, default=20)
   parser.add_argument("--num_head", type=int, default=1)
-  parser.add_argument("--use_pretraining", action='store_true')
   parser.add_argument("--grad", type=str, default='all')
+
+  parser.add_argument("--use_pretraining", action='store_true')  
   parser.add_argument("--pretrain_splits", nargs="+", default=[])
   parser.add_argument("--n_pretrain_iters", type=int, default=50000)
+
   parser.add_argument("--no_save", action='store_true')
   parser.add_argument("--use_glove", action='store_true')
   parser.add_argument("--attn_only_verb", action='store_true')
@@ -449,12 +479,21 @@ def make_arg_parser():
   parser.add_argument("--use_intermediate", action='store_true')
   parser.add_argument("--error_margin", type=float, default=3.0)
   parser.add_argument('--cache_root', type=str,
-                      default='/projects/vcirik/refer360/data/cached_data_15degrees/')
+                      default='/projects/vcirik/refer360/data/cached_data_30degrees/')
+  parser.add_argument("--angle_inc", type=float, default=30.)
   parser.add_argument('--image_list_file', type=str,
                       default='/projects/vcirik/refer360/data/imagelist.txt')
   parser.add_argument('--refer360_root', type=str,
-                      default='/projects/vcirik/refer360/data/continuous_grounding')
+                default='/projects/vcirik/refer360/data/continuous_grounding_30degrees')
   parser.add_argument("--add_asterix", action='store_true')
+  parser.add_argument("--use_gt_actions", action='store_true')
+  parser.add_argument("--use_visited_embeddings", action='store_true')
+  parser.add_argument("--use_oracle_embeddings", action='store_true')
+  parser.add_argument("--verbose", action='store_true')
+  parser.add_argument("--random_baseline", action='store_true')
+  parser.add_argument('--metrics', type=str,
+                      default='success_rate',
+                      help='Success metric, default=success_rate')
 
   return parser
 

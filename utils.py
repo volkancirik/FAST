@@ -459,3 +459,66 @@ class NumpyEncoder(json.JSONEncoder):
     elif isinstance(obj, torch.Tensor):
       return obj.tolist()
     return json.JSONEncoder.default(self, obj)
+
+import io
+import PIL.Image
+from matplotlib.pyplot import cm
+import matplotlib.pyplot as plt
+from torchvision.transforms import ToTensor
+
+def get_confusion_matrix_image(labels, matrix, title='Title', tight=False, cmap=cm.copper):
+
+  labels_x,labels_y = labels
+  fig, ax = plt.subplots()
+  _ = ax.imshow(matrix, cmap=cmap)
+
+  ax.set_xticks(np.arange(matrix.shape[1]))
+  ax.set_yticks(np.arange(matrix.shape[0]))
+  ax.set_xticklabels(labels_x)
+  ax.set_yticklabels(labels_y)
+
+  # Rotate the tick labels and set their alignment.
+  plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+           rotation_mode="anchor")
+
+  # Loop over data dimensions and create text annotations.
+  for i in range(matrix.shape[0]):
+    for j in range(matrix.shape[1]):
+      _ = ax.text(j, i, '{:0.2f}'.format(matrix[i, j]),
+                  ha="center", va="center", color="w", fontsize=8)
+  ax.set_title(title)
+  if tight:
+    fig.tight_layout()
+  buf = io.BytesIO()
+  plt.savefig(buf, format='jpeg')
+  buf.seek(0)
+  image = PIL.Image.open(buf)
+  image = ToTensor()(image)
+  plt.close('all')
+  return image
+
+def get_bar_image(x_pos, x_labels, means, errors,
+                  tight = False,
+                  title = 'Title'):
+  plt.figure(figsize=(24, 12))
+  fig, ax = plt.subplots()
+
+
+  ax.bar(x_pos, means, yerr=errors, align='center', alpha=0.5, ecolor='black', capsize=10)
+  ax.set_xticks(x_pos)
+  ax.set_xticklabels(x_labels)
+  ax.yaxis.grid(True)
+  plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+           rotation_mode="anchor", fontsize=9)
+
+  ax.set_title(title)
+  if tight:
+    fig.tight_layout()
+
+  buf = io.BytesIO()
+  plt.savefig(buf, format='jpeg')
+  buf.seek(0)
+  image = PIL.Image.open(buf)
+  image = ToTensor()(image)
+  plt.close('all')
+  return image

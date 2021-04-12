@@ -190,7 +190,7 @@ class Seq2SeqSpeaker(object):
                                 ignore_index=vocab_pad_idx, reduction='none')
       sequence_scores += word_scores.data
       loss += F.nll_loss(log_probs, target,
-                         ignore_index=vocab_pad_idx, reduction='elementwise_mean')
+                         ignore_index=vocab_pad_idx, reduction='mean')
 
       for perm_index, src_index in enumerate(perm_indices):
         word_idx = w_t[perm_index].item()
@@ -221,7 +221,7 @@ class Seq2SeqSpeaker(object):
     outputs, loss = self._score_obs_actions_and_instructions(
         path_obs, path_actions, encoded_instructions, self.feedback)
     self.loss = loss
-    self.losses.append(loss.data[0])
+    self.losses.append(loss.item())
     return outputs
 
   def beam_search(self, beam_size, path_obs, path_actions):

@@ -14,14 +14,14 @@ import utils
 from utils import load_datasets, load_nav_graphs
 from follower import BaseAgent
 
-import pdb
 import train
 
 from collections import namedtuple
 
 EvalResult = namedtuple(
-    "EvalResult", "nav_error, oracle_error, trajectory_steps, "
-                  "trajectory_length, success, oracle_success, spl")
+  "EvalResult", "nav_error, oracle_error, trajectory_steps, "
+  "trajectory_length, success, oracle_success, spl, "
+  "cls, ndtw")
 
 
 class Evaluation(object):
@@ -84,6 +84,36 @@ class Evaluation(object):
         near_d = d
     return near_id
 
+  # Metrics implemented here:
+  # https://github.com/Sha-Lab/babywalk/blob/master/simulator/envs/env.py
+  # L282 - L324
+
+  def ndtw(self, scan, prediction, reference):
+    dtw_matrix = np.inf * np.ones((len(prediction) + 1, len(reference) + 1))
+    dtw_matrix[0][0] = 0
+    for i in range(1, len(prediction) + 1):
+      for j in range(1, len(reference) + 1):
+        best_previous_cost = min(dtw_matrix[i - 1][j],
+                                 dtw_matrix[i][j - 1],
+                                 dtw_matrix[i - 1][j - 1])
+        cost = self.distances[scan][prediction[i - 1]][reference[j - 1]]
+        dtw_matrix[i][j] = cost + best_previous_cost
+    dtw = dtw_matrix[len(prediction)][len(reference)]
+    ndtw = np.exp(-dtw / (self.error_margin * len(reference)))
+    return ndtw
+  def length(self, scan, nodes):
+    return float(np.sum([self.distances[scan][edge[0]][edge[1]]
+                         for edge in zip(nodes[:-1], nodes[1:])]))
+
+  def cls(self, scan, prediction, reference):
+    coverage = np.mean([np.exp(
+      -np.min([self.distances[scan][u][v] for v in prediction]) / self.error_margin
+    ) for u in reference])
+    expected = coverage * self.length(scan, reference)
+    score = expected \
+            / (expected + np.abs(expected - self.length(scan, prediction)))
+    return coverage * score
+
   def _score_item(self, instr_id, path):
     ''' Calculate error based on the final position in trajectory, and also
         the closest position (oracle stopping rule). '''
@@ -125,11 +155,17 @@ class Evaluation(object):
     spl = 0.0 if nav_error >= self.error_margin else \
         (float(sp_length) / max(trajectory_length, sp_length))
 
+    prediction_path = [p[0] for p in path]
+    cls = self.cls(gt['scan'],prediction_path,gt['path'])
+    ndtw = self.ndtw(gt['scan'],prediction_path,gt['path'])
+
     return EvalResult(nav_error=nav_error, oracle_error=oracle_error,
                       trajectory_steps=trajectory_steps,
                       trajectory_length=trajectory_length, success=success,
                       oracle_success=oracle_success,
-                      spl=spl)
+                      spl=spl,
+                      cls=cls,
+                      ndtw=ndtw)
 
   def score_results(self, results):
     # results should be a dictionary mapping instr_ids to dictionaries,
@@ -156,8 +192,11 @@ class Evaluation(object):
         self.scores['oracle_success'].append(
             eval_result.oracle_success)
         self.scores['spl'].append(eval_result.spl)
+        self.scores['cls'].append(eval_result.cls)
+        self.scores['ndtw'].append(eval_result.ndtw)
+
         if 'score' in result:
-          model_scores.append(result['score'])
+          model_scores.append(result['score'].item())
 
     assert len(instr_ids) == 0, \
         'Missing %d of %d instruction ids from %s' % (
@@ -165,15 +204,17 @@ class Evaluation(object):
 
     assert len(self.scores['nav_errors']) == len(self.instr_ids)
     score_summary = {
-        'nav_error': np.average(self.scores['nav_errors']),
-        'oracle_error': np.average(self.scores['oracle_errors']),
-        'steps': np.average(self.scores['trajectory_steps']),
-        'lengths': np.average(self.scores['trajectory_lengths']),
-        'success_rate': float(
+      'nav_error': np.average(self.scores['nav_errors']),
+      'oracle_error': np.average(self.scores['oracle_errors']),
+      'steps': np.average(self.scores['trajectory_steps']),
+      'lengths': np.average(self.scores['trajectory_lengths']),
+      'success_rate': float(
             sum(self.scores['success']) / len(self.scores['success'])),
-        'oracle_rate': float(sum(self.scores['oracle_success'])
+      'oracle_rate': float(sum(self.scores['oracle_success'])
                              / len(self.scores['oracle_success'])),
-        'spl': float(sum(self.scores['spl'])) / len(self.scores['spl'])
+      'spl': float(sum(self.scores['spl'])) / len(self.scores['spl']),
+      'cls' : float(sum(self.scores['cls'])) / len(self.scores['cls']),
+      'ndtw' : float(sum(self.scores['ndtw'])) / len(self.scores['ndtw']),
     }
     if len(model_scores) > 0:
       assert len(model_scores) == instr_count
@@ -187,7 +228,7 @@ class Evaluation(object):
         [i for i in self.scores['oracle_errors'] if i < self.error_margin])
     assert float(oracle_successes) / float(len(self.scores['oracle_errors'])) == score_summary['oracle_rate']  # NoQA
     # score_summary['oracle_rate'] = float(oracle_successes) / float(len(self.scores['oracle_errors']))  # NoQA
-    return score_summary, self.scores
+    return score_summary, self.scores, None
 
   def score_file(self, output_file):
     ''' Evaluate each agent trajectory based on how close it got to the
@@ -303,7 +344,7 @@ def eval_simple_agents(args):
       agent = BaseAgent.get_agent(agent_type)(env, outfile)
       agent.test()
       agent.write_results()
-      score_summary, _ = ev.score_file(outfile)
+      score_summary, _, _ = ev.score_file(outfile)
       print('\n%s' % agent_type)
       pp.pprint(score_summary)
 
@@ -318,7 +359,7 @@ def eval_seq2seq():
   for outfile in outfiles:
     for split in ['val_seen', 'val_unseen']:
       ev = Evaluation([split])
-      score_summary, _ = ev.score_file(outfile % split)
+      score_summary, _, _ = ev.score_file(outfile % split)
       print('\n%s' % outfile)
       pp.pprint(score_summary)
 
@@ -332,7 +373,7 @@ def eval_outfiles(outfolder):
       if s in outfile:
         _splits.append(s)
     ev = Evaluation(_splits)
-    score_summary, _ = ev.score_file(outfile)
+    score_summary, _, _= ev.score_file(outfile)
     print('\n', outfile)
     pp.pprint(score_summary)
 

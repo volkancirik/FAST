@@ -1,12 +1,14 @@
 ''' Evaluation of agent trajectories '''
-
+from collections import defaultdict
 import json
+import pdb
 import pprint
 pp = pprint.PrettyPrinter(indent=4)  # NoQA
 
 from utils import load_datasets, Tokenizer
 import numpy as np
 from bleu import multi_bleu
+from refer360_env import load_datasets as load_refer360_datasets
 
 
 class SpeakerEvaluation(object):
@@ -16,7 +18,14 @@ class SpeakerEvaluation(object):
 
   def __init__(self, splits,
                instructions_per_path=None,
-               prefix='R2R'):
+               args=None):
+
+    prefix = args.prefix
+    refer360_root = args.refer360_root
+    cache_root = args.cache_root
+    error_margin = args.error_margin
+
+
     self.splits = splits
     self.gt = {}
     self.instr_ids = []
@@ -24,13 +33,30 @@ class SpeakerEvaluation(object):
     if instructions_per_path is None:
       instructions_per_path = 3
     self.instructions_per_path = instructions_per_path
+    self.instructions = {}
+    if prefix == 'refer360':
+      counts = defaultdict(int)
+      refer360_data = load_refer360_datasets(splits, root=refer360_root)
+      for item in refer360_data:
+        path_id = item['path_id']
+        count = counts[path_id]
+        new_path_id = '{}*{}'.format(path_id, count)
+        counts[path_id] += 1
+        item['path_id'] = new_path_id
 
-    for item in load_datasets(splits, prefix=prefix):
-      item['instructions'] = item['instructions'][:instructions_per_path]
-      self.gt[item['path_id']] = item
-      self.scans.append(item['scan'])
-      self.instr_ids += ['{}_{}'.format(item['path_id'], i)
-                         for i in range(len(item['instructions']))]
+        self.gt[str(item['path_id'])] = item
+        self.scans.append(item['scan'])
+        self.instr_ids += ['%s_%d' % (item['path_id'], i) for i in
+                           range(len(item['instructions']))]
+        for j, instruction in enumerate(item['instructions']):
+          self.instructions['{}_{}'.format(item['path_id'], j)] = instruction
+    else:
+      for item in load_datasets(splits, prefix=prefix):
+        item['instructions'] = item['instructions'][:instructions_per_path]
+        self.gt[str(item['path_id'])] = item
+        self.scans.append(item['scan'])
+        self.instr_ids += ['{}_{}'.format(item['path_id'], i)
+                           for i in range(len(item['instructions']))]
 
     self.scans = set(self.scans)
     self.instr_ids = set(self.instr_ids)
@@ -43,6 +69,7 @@ class SpeakerEvaluation(object):
     results_by_base_id = {}
     mismatches = []
     for instr_id, result in results.items():
+
       if instr_id in instr_ids:
         instr_ids.remove(instr_id)
 
@@ -63,9 +90,6 @@ class SpeakerEvaluation(object):
         print(new_pred)
         print()
 
-    print('>>>>', self.instr_ids)
-    print('___')
-    print('instr', instr_ids)
     assert len(instr_ids) == 0, \
         'Missing %d of %d instruction ids from %s' % (
         len(instr_ids), len(self.instr_ids), ",".join(self.splits))
@@ -81,6 +105,7 @@ class SpeakerEvaluation(object):
     skipped_refs = set()
     for base_id, result in sorted(results_by_base_id.items()):
       instr_count += 1
+
       gt = self.gt[base_id]
       tokenized_refs = [
           Tokenizer.split_sentence(ref) for ref in gt['instructions']]

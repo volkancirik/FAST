@@ -1,3 +1,4 @@
+''' Batched Room-to-Room navigation environment '''
 from torch.autograd import Variable
 import torch
 from utils import load_datasets, load_nav_graphs, structured_map, decode_base64, k_best_indices, try_cuda, spatial_feature_from_bbox
@@ -13,9 +14,8 @@ import json
 import math
 import numpy as np
 import csv
+import pdb
 import MatterSim
-''' Batched Room-to-Room navigation environment '''
-
 import os
 import sys
 file_path = os.path.dirname(__file__)
@@ -857,7 +857,6 @@ class EnvBatch():
       load_world_state(sim, world_state)
       # load the location attribute corresponding to the action
       if action >= len(last_ob['adj_loc_list']):
-        import pdb
         pdb.set_trace()
       loc_attr = last_ob['adj_loc_list'][action]
       _navigate_to_location(
@@ -901,7 +900,7 @@ class R2RBatch():
     beam_size = args.beam_size
     prefix = args.prefix
     language = args.language
-
+    self.num_views = ImageFeatures.NUM_VIEWS
     self.image_features_list = image_features_list
     self.data = []
     self.scans = []
@@ -937,7 +936,9 @@ class R2RBatch():
         self.data.append(new_item)
     print('unk ratio: {:3.2f} {} {}'.format(
         total_unk / (total_unk + total_found), total_unk, total_found))
-    print('UNK vocab size and vocab:\n', len(all_unk), all_unk)
+    print('UNK vocab size:', len(all_unk))
+    if args.verbose:
+      print('UNK vocab:\n', all_unk)
     self.scans = set(self.scans)
     self.splits = splits
     self.seed = seed
@@ -1114,6 +1115,7 @@ class R2RBatch():
     scanIds = [item['scan'] for item in instance_list]
     viewpointIds = [item['path'][0] for item in instance_list]
     headings = [item['heading'] for item in instance_list]
+
     return self.env.newEpisodes(scanIds, viewpointIds, headings, beamed=beamed)
 
   def reset(self, sort=False, beamed=False, load_next_minibatch=True):

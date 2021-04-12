@@ -17,10 +17,13 @@ from follower import BaseAgent
 import train
 
 from collections import namedtuple
-import pdb
+
+
 EvalResult = namedtuple(
-    "EvalResult", "nav_error, oracle_error, trajectory_steps, "
-                  "trajectory_length, success, oracle_success, spl")
+  "EvalResult", "nav_error, oracle_error, trajectory_steps, "
+  "trajectory_length, success, oracle_success, spl, "
+  "fov_accuracy, acc_20, acc_40, acc_60,"
+  "cls, ndtw")
 
 
 class Refer360Evaluation(object):
@@ -36,6 +39,7 @@ class Refer360Evaluation(object):
     cache_root = args.cache_root
     error_margin = args.error_margin
 
+
     self.splits = splits
     self.gt = {}
     self.instr_ids = []
@@ -49,7 +53,7 @@ class Refer360Evaluation(object):
       new_path_id = '{}*{}'.format(path_id, count)
       counts[path_id] += 1
       item['path_id'] = new_path_id
-
+      item['gt_actions_path'] = item['path']
       self.gt[item['path_id']] = item
       self.scans.append(item['scan'])
       if prefix == 'refer360':
@@ -62,12 +66,13 @@ class Refer360Evaluation(object):
     self.scans = set(self.scans)
     self.instr_ids = set(self.instr_ids)
 
-    sim = make_sim(cache_root,
+    self.sim = make_sim(cache_root,
                    Refer360ImageFeatures.IMAGE_W,
                    Refer360ImageFeatures.IMAGE_H,
                    Refer360ImageFeatures.VFOV)
-    self.nodes = sim.nodes
-    self.distances = sim.distances
+    self.sim.load_maps()
+    self.nodes = self.sim.nodes
+    self.distances = self.sim.distances
     self.error_margin = error_margin*270.0  # error_margin * max FOV distance
 
   def _get_nearest(self, scan, goal_id, path):
@@ -79,6 +84,36 @@ class Refer360Evaluation(object):
         near_id = item[0]
         near_d = d
     return near_id
+
+  # Metrics implemented here:
+  # https://github.com/Sha-Lab/babywalk/blob/master/simulator/envs/env.py
+  # L282 - L324
+
+  def ndtw(self, prediction, reference):
+    dtw_matrix = np.inf * np.ones((len(prediction) + 1, len(reference) + 1))
+    dtw_matrix[0][0] = 0
+    for i in range(1, len(prediction) + 1):
+      for j in range(1, len(reference) + 1):
+        best_previous_cost = min(dtw_matrix[i - 1][j],
+                                 dtw_matrix[i][j - 1],
+                                 dtw_matrix[i - 1][j - 1])
+        cost = self.distances[prediction[i - 1]][reference[j - 1]]
+        dtw_matrix[i][j] = cost + best_previous_cost
+    dtw = dtw_matrix[len(prediction)][len(reference)]
+    ndtw = np.exp(-dtw / (self.error_margin * len(reference)))
+    return ndtw
+  def length(self, nodes):
+    return float(np.sum([self.distances[edge[0]][edge[1]]
+                         for edge in zip(nodes[:-1], nodes[1:])]))
+
+  def cls(self, prediction, reference):
+    coverage = np.mean([np.exp(
+      -np.min([self.distances[u][v] for v in prediction]) / self.error_margin
+    ) for u in reference])
+    expected = coverage * self.length(reference)
+    score = expected \
+            / (expected + np.abs(expected - self.length(prediction)))
+    return coverage * score
 
   def _score_item(self, instr_id, path):
     ''' Calculate error based on the final position in trajectory, and also
@@ -99,6 +134,21 @@ class Refer360Evaluation(object):
         'Result trajectories should include the start position'
     goal = gt['path'][-1]
     final_position = path[-1][0]
+
+    self.sim.look_fov(final_position)
+    res = self.sim.get_image_coordinate_for(gt['gt_lng'], gt['gt_lat'])
+    metrics = defaultdict(float)
+    if res != None:
+      fov_accuracy = 1.0
+      distance = np.sqrt(((res[0] - 200)
+                         ** 2 + (res[1] - 200)**2))
+      for th in [20, 40, 60]:
+        metrics['acc_{}'.format(th)] += int(distance <= th)
+    else:
+      fov_accuracy = 0
+      for th in [20, 40, 60]:
+        metrics['acc_{}'.format(th)] += 0
+
     nearest_position = self._get_nearest(gt['scan'], goal, path)
     nav_error = self.distances[final_position][goal]
     oracle_error = self.distances[nearest_position][goal]
@@ -119,20 +169,40 @@ class Refer360Evaluation(object):
     sp_length = 0
     prev = gt['path'][0]
     sp_length = self.distances[gt['path'][0]][gt['path'][-1]]
-    spl = 0.0 if nav_error >= self.error_margin else \
-        (float(sp_length) / max(trajectory_length, sp_length))
+
+    traj_length = max(trajectory_length, sp_length)
+    spl = 0.0 if nav_error >= self.error_margin or traj_length == 0 else \
+        (float(sp_length) / traj_length)
+
+    prediction_path = [p[0] for p in path]
+    cls = self.cls(prediction_path,gt['path'])
+    ndtw = self.ndtw(prediction_path,gt['path'])
 
     return EvalResult(nav_error=nav_error, oracle_error=oracle_error,
                       trajectory_steps=trajectory_steps,
                       trajectory_length=trajectory_length, success=success,
                       oracle_success=oracle_success,
-                      spl=spl)
+                      spl=spl,
+                      fov_accuracy = fov_accuracy,
+                      acc_20 = metrics['acc_20'],
+                      acc_40 = metrics['acc_40'],
+                      acc_60 = metrics['acc_60'],
+                      cls=cls,
+                      ndtw=ndtw)
 
   def score_results(self, results):
     # results should be a dictionary mapping instr_ids to dictionaries,
     # with each dictionary containing (at least) a 'trajectory' field
     # return a dict with key being a evaluation metric
     self.scores = defaultdict(list)
+
+    loc2scores, scene2scores, traj_length2scores, inst_length2scores = {},{},{},{}
+    for key in EvalResult._fields:
+      loc2scores[key]  = defaultdict(list)
+      scene2scores[key] = defaultdict(list)
+      traj_length2scores[key] = defaultdict(list)
+      inst_length2scores[key] = defaultdict(list)
+
     model_scores = []
     instr_ids = set(self.instr_ids)
 
@@ -145,20 +215,38 @@ class Refer360Evaluation(object):
         instr_ids.remove(instr_id)
         eval_result = self._score_item(instr_id, result['trajectory'])
 
-        self.scores['nav_errors'].append(eval_result.nav_error)
-        self.scores['oracle_errors'].append(eval_result.oracle_error)
+        img_path =self.gt[result['instr_id'].split('_')[0]]['img_src']
+        img_loc = img_path.split('/')[3]
+        img_scene = img_path.split('/')[4]
+        traj_length = len(self.gt[result['instr_id'].split('_')[0]]['gt_actions_path'])
+        inst_length = result['instr_encoding'].shape[0]
+
+        self.scores['nav_error'].append(eval_result.nav_error)
+        self.scores['oracle_error'].append(eval_result.oracle_error)
         self.scores['trajectory_steps'].append(
             eval_result.trajectory_steps)
-        self.scores['trajectory_lengths'].append(
+        self.scores['trajectory_length'].append(
             eval_result.trajectory_length)
         self.scores['success'].append(eval_result.success)
         self.scores['oracle_success'].append(
             eval_result.oracle_success)
         self.scores['spl'].append(eval_result.spl)
+        self.scores['fov_accuracy'].append(eval_result.fov_accuracy)
+        self.scores['acc_20'].append(eval_result.acc_20)
+        self.scores['acc_40'].append(eval_result.acc_40)
+        self.scores['acc_60'].append(eval_result.acc_60)
+        self.scores['cls'].append(eval_result.cls)
+        self.scores['ndtw'].append(eval_result.ndtw)
+
+        for sk in self.scores.keys():
+          loc2scores[sk][img_loc].append(self.scores[sk][-1])
+          scene2scores[sk][img_scene].append(self.scores[sk][-1])
+          traj_length2scores[sk][traj_length].append(self.scores[sk][-1])
+          inst_length2scores[sk][inst_length].append(self.scores[sk][-1])
 
         done.append((instr_id, instr_count))
         if 'score' in result:
-          model_scores.append(result['score'])
+          model_scores.append(result['score'].item())
 
     rand_idx = random.choice(range(instr_count))
     rand_result = results[done[rand_idx][0]]
@@ -179,31 +267,47 @@ class Refer360Evaluation(object):
         'Missing %d of %d instruction ids from %s' % (
             len(instr_ids), len(self.instr_ids), ",".join(self.splits))
 
-    assert len(self.scores['nav_errors']) == len(self.instr_ids)
+    assert len(self.scores['nav_error']) == len(self.instr_ids)
     score_summary = {
-        'nav_error': np.average(self.scores['nav_errors']),
-        'oracle_error': np.average(self.scores['oracle_errors']),
-        'steps': np.average(self.scores['trajectory_steps']),
-        'lengths': np.average(self.scores['trajectory_lengths']),
-        'success_rate': float(
+      'nav_error': np.average(self.scores['nav_error']),
+      'oracle_error': np.average(self.scores['oracle_error']),
+      'steps': np.average(self.scores['trajectory_steps']),
+      'lengths': np.average(self.scores['trajectory_length']),
+      'success_rate': float(
             sum(self.scores['success']) / len(self.scores['success'])),
-        'oracle_rate': float(sum(self.scores['oracle_success'])
+      'oracle_rate': float(sum(self.scores['oracle_success'])
                              / len(self.scores['oracle_success'])),
-        'spl': float(sum(self.scores['spl'])) / len(self.scores['spl'])
+      'spl': float(sum(self.scores['spl'])) / len(self.scores['spl']),
+      'fov_accuracy': float(
+            sum(self.scores['fov_accuracy']) / len(self.scores['fov_accuracy'])),
+      'acc_20': float(
+            sum(self.scores['acc_20']) / len(self.scores['acc_20'])),
+      'acc_40': float(
+            sum(self.scores['acc_40']) / len(self.scores['acc_40'])),
+      'acc_60': float(
+            sum(self.scores['acc_60']) / len(self.scores['acc_60'])),
+      'cls' : float(sum(self.scores['cls'])) / len(self.scores['cls']),
+      'ndtw' : float(sum(self.scores['ndtw'])) / len(self.scores['ndtw']),
     }
     if len(model_scores) > 0:
       assert len(model_scores) == instr_count
       score_summary['model_score'] = np.average(model_scores)
 
     num_successes = len(
-        [i for i in self.scores['nav_errors'] if i < self.error_margin])
-    # score_summary['success_rate'] = float(num_successes)/float(len(self.scores['nav_errors']))  # NoQA
-    assert float(num_successes) / float(len(self.scores['nav_errors'])) == score_summary['success_rate']  # NoQA
+        [i for i in self.scores['nav_error'] if i < self.error_margin])
+    # score_summary['success_rate'] = float(num_successes)/float(len(self.scores['nav_error']))  # NoQA
+    assert float(num_successes) / float(len(self.scores['nav_error'])) == score_summary['success_rate']  # NoQA
     oracle_successes = len(
-        [i for i in self.scores['oracle_errors'] if i < self.error_margin])
-    assert float(oracle_successes) / float(len(self.scores['oracle_errors'])) == score_summary['oracle_rate']  # NoQA
-    # score_summary['oracle_rate'] = float(oracle_successes) / float(len(self.scores['oracle_errors']))  # NoQA
-    return score_summary, self.scores
+        [i for i in self.scores['oracle_error'] if i < self.error_margin])
+    assert float(oracle_successes) / float(len(self.scores['oracle_error'])) == score_summary['oracle_rate']  # NoQA
+    # score_summary['oracle_rate'] = float(oracle_successes) / float(len(self.scores['oracle_error']))  # NoQA
+
+    analysis = {'loc2scores' : loc2scores,
+                'scene2scores': scene2scores,
+                'traj_length2scores' : traj_length2scores,
+                'inst_length2scores' : inst_length2scores
+                }
+    return score_summary, self.scores, analysis
 
   def score_file(self, output_file):
     ''' Evaluate each agent trajectory based on how close it got to the
@@ -306,35 +410,39 @@ class Refer360Evaluation(object):
 def eval_simple_agents(args):
   ''' Run simple baselines on each split. '''
   img_features = Refer360ImageFeatures.from_args(args)
-  for split in ['train', 'val_seen', 'val_unseen', 'test']:
+#  for split in ['val_seen', 'val_unseen',]:
+  for split in ['val_seen',
+                'val_unseen',
+                'test_unseen',
+                'test_seen']:
     env = Refer360Batch(img_features,
-                        batch_size=1,
                         splits=[split],
-                        prefix=args.prefix)
-    ev = Refer360Evaluation([split])
+                        args=args)
+    ev = Refer360Evaluation([split],
+                            args=args)
 
     for agent_type in ['Stop', 'Shortest', 'Random']:
       outfile = '%s%s_%s_agent.json' % (
-          train.RESULT_DIR, split, agent_type.lower())
+          args.RESULT_DIR, split, agent_type.lower())
       agent = BaseAgent.get_agent(agent_type)(env, outfile)
       agent.test()
       agent.write_results()
-      score_summary, _ = ev.score_file(outfile)
+      score_summary, _, _ = ev.score_file(outfile)
       print('\n%s' % agent_type)
       pp.pprint(score_summary)
 
 
-def eval_seq2seq():
+def eval_seq2seq(args):
   ''' Eval sequence to sequence models on val splits (iteration selected from
   training error) '''
   outfiles = [
-      train.RESULT_DIR + 'seq2seq_teacher_imagenet_%s_iter_5000.json',
-      train.RESULT_DIR + 'seq2seq_sample_imagenet_%s_iter_20000.json'
+      args.RESULT_DIR + 'seq2seq_teacher_imagenet_%s_iter_5000.json',
+      args.RESULT_DIR + 'seq2seq_sample_imagenet_%s_iter_20000.json'
   ]
   for outfile in outfiles:
     for split in ['val_seen', 'val_unseen']:
       ev = Refer360Evaluation([split])
-      score_summary, _ = ev.score_file(outfile % split)
+      score_summary, _, _ = ev.score_file(outfile % split)
       print('\n%s' % outfile)
       pp.pprint(score_summary)
 
@@ -348,7 +456,7 @@ def eval_outfiles(outfolder):
       if s in outfile:
         _splits.append(s)
     ev = Refer360Evaluation(_splits)
-    score_summary, _ = ev.score_file(outfile)
+    score_summary, _, _ = ev.score_file(outfile)
     print('\n', outfile)
     pp.pprint(score_summary)
 
@@ -356,4 +464,4 @@ def eval_outfiles(outfolder):
 if __name__ == '__main__':
   from train import make_arg_parser
   utils.run(make_arg_parser(), eval_simple_agents)
-  # eval_seq2seq()
+  # eval_seq2seq(make_arg_parser())

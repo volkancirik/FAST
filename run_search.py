@@ -16,7 +16,11 @@ import utils
 from utils import read_vocab, Tokenizer, vocab_pad_idx, timeSince, try_cuda
 from utils import filter_param, module_grad, colorize
 from utils import NumpyEncoder
+
 from env import R2RBatch, ImageFeatures
+from refer360_env import Refer360Batch, Refer360ImageFeatures
+import refer360_eval
+
 from model import EncoderLSTM, AttnDecoderLSTM
 from model import SpeakerEncoderLSTM, DotScorer
 from model import SimpleCandReranker
@@ -39,9 +43,10 @@ def get_model_prefix(args, image_feature_list):
 
 
 def _train(args, train_env, agent, optimizers,
-           n_iters, log_every=train.log_every, val_envs=None):
+           val_envs=None):
   ''' Train on training set, validating on both seen and unseen. '''
-
+  log_every = args.log_every
+  n_iters = args.n_iters
   if val_envs is None:
     val_envs = {}
 
@@ -87,10 +92,10 @@ def _train(args, train_env, agent, optimizers,
       if hasattr(agent, 'speaker') and agent.speaker:
         agent.speaker.env = val_env
 
-      agent.results_path = '%s%s_%s_iter_%d.json' % (
-          args.RESULT_DIR, get_model_prefix(
-              args, train_env.image_features_list),
-          env_name, iter)
+      agent.results_path =  os.path.join(
+        args.RESULT_DIR, '%s_%s_iter_%d.json' % (get_model_prefix(args, train_env.image_features_list),
+            split_string, iter))
+
 
       # Get validation loss under the same conditions as training
       agent.test(use_dropout=True, feedback=args.feedback_method,
@@ -282,6 +287,15 @@ def cache(args, agent, train_env, val_envs):
     cache_env_name = list(val_envs.keys())
     cache_env = [v[0] for v in val_envs.values()]
 
+  if args.env == 'r2r':
+    Eval = eval.Evaluation
+  elif args.env == 'refer360':
+    Eval = refer360_eval.Refer360Evaluation
+  else:
+    raise NotImplementedError(
+        'this {} environment is not implemented.'.format(args.env))
+
+
   print(cache_env_name)
   for env_name, env in zip(cache_env_name, cache_env):
     # if env_name is not 'val_unseen': continue
@@ -295,13 +309,13 @@ def cache(args, agent, train_env, val_envs):
         json.dump(agent.cache_candidates, outfile, cls=NumpyEncoder)
       with open('search_{}{}{}{}.json'.format(env_name, '_debug' if args.debug else '', args.max_episode_len, args.early_stop), 'w') as outfile:
         json.dump(agent.cache_search, outfile, cls=NumpyEncoder)
-    score_summary, _ = eval.Evaluation(env.splits).score_results(agent.results)
+    score_summary, _, _ = Eval(env.splits, args=args).score_results(agent.results)
     pp.pprint(score_summary)
 
 
 def make_arg_parser():
   parser = train.make_arg_parser()
-  parser.add_argument("--max_episode_len", type=int, default=40)
+#  parser.add_argument("--max_episode_len", type=int, default=40)
   parser.add_argument("--gamma", type=float, default=0.21)
   parser.add_argument("--mean", action='store_true')
   parser.add_argument("--logit", action='store_true')
@@ -311,8 +325,6 @@ def make_arg_parser():
   parser.add_argument("--load_reranker", type=str, default='')
   parser.add_argument("--K", type=int, default=10)
   parser.add_argument("--beam", action='store_true')
-  # parser.add_argument("--load_speaker", type=str,
-  #                     default='./tasks/R2R/experiments/release/speaker_final_release')
   parser.add_argument("--load_speaker", type=str,
                       default='')
 
@@ -330,18 +342,23 @@ def setup_agent_envs(args):
 
 
 def test(args, agent, val_envs):
-  test_env = val_envs['test'][0]
-  test_env.notTest = False
 
-  agent.env = test_env
-  if agent.speaker:
-    agent.speaker.env = test_env
-  agent.results_path = '%stest.json' % (args.RESULT_DIR)
-  agent.test(use_dropout=False, feedback='argmax')
-  agent.write_test_results()
+  for test_split in val_envs.keys():
+    print('testing agent on',test_split)
+    test_env = val_envs[test_split][0]
+    test_env.notTest = False
+
+    agent.env = test_env
+    if agent.speaker:
+      agent.speaker.env = test_env
+    agent.results_path = '%s/%s_%s.json' % (
+        args.RESULT_DIR, get_model_prefix(
+            args, test_env.image_features_list), test_split)
+
+    print('results_path:',agent.results_path)
+    agent.test(use_dropout=False, feedback='argmax')
+    agent.write_test_results()
   print("finished testing. recommended to save the trajectory again")
-  import pdb
-  pdb.set_trace()
 
 
 def main(args):
@@ -359,7 +376,17 @@ def main(args):
   else:
     agent, train_env, val_envs = setup_agent_envs(args)
 
-  image_features_list = ImageFeatures.from_args(args)
+  if args.env == 'r2r':
+#    EnvBatch = R2RBatch
+    ImgFeatures = ImageFeatures
+  elif args.env == 'refer360':
+#    EnvBatch = Refer360Batch
+    ImgFeatures = Refer360ImageFeatures
+  else:
+    raise NotImplementedError(
+        'this {} environment is not implemented.'.format(args.env))
+
+  image_features_list = ImgFeatures.from_args(args)
   feature_size = sum(
       [featurizer.feature_dim for featurizer in image_features_list]) + 128
 

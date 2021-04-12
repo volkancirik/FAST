@@ -12,37 +12,19 @@ import argparse
 import utils
 from utils import read_vocab, Tokenizer, timeSince, try_cuda
 from env import R2RBatch, ImageFeatures
-from test_env import TestR2RBatch
+from refer360_env import Refer360Batch, Refer360ImageFeatures
+
 from model import SpeakerEncoderLSTM, SpeakerDecoderLSTM
 from speaker import Seq2SeqSpeaker
 import eval_speaker
 
 from vocab import SUBTRAIN_VOCAB, TRAIN_VOCAB, TRAINVAL_VOCAB
 
-#MAX_INSTRUCTION_LENGTH = 80
-
-batch_size = 100
-max_episode_len = 10
-word_embedding_size = 300
-#glove_path = 'tasks/R2R/data/train_glove.npy'
-#action_embedding_size = 2048+128
-hidden_size = 512
-bidirectional = False
-dropout_ratio = 0.5
-feedback_method = 'teacher'  # teacher or sample
-learning_rate = 0.0001
-weight_decay = 0.0005
-#FEATURE_SIZE = 2048+128
-n_iters = 20000
-log_every = 1000
-save_every = 1000
-
-
 def get_model_prefix(args, image_feature_list):
   image_feature_name = "+".join(
       [featurizer.get_name() for featurizer in image_feature_list])
   model_prefix = 'speaker_{}_{}'.format(
-      feedback_method, image_feature_name)
+      args.feedback_method, image_feature_name)
   if args.use_train_subset:
     model_prefix = 'trainsub_' + model_prefix
   return model_prefix
@@ -58,19 +40,21 @@ def filter_param(param_list):
   return [p for p in param_list if p.requires_grad]
 
 
-def train(args, train_env, agent, log_every=log_every, val_envs=None):
+def train(args, train_env, agent, val_envs=None):
   ''' Train on training set, validating on both seen and unseen. '''
 
   if val_envs is None:
     val_envs = {}
 
-  print('Training with %s feedback' % feedback_method)
+  print('Training with %s feedback' % args.feedback_method)
   encoder_optimizer = optim.Adam(
-      filter_param(agent.encoder.parameters()), lr=learning_rate,
-      weight_decay=weight_decay)
+      filter_param(agent.encoder.parameters()),
+    lr=args.learning_rate,
+    weight_decay=args.weight_decay)
   decoder_optimizer = optim.Adam(
-      filter_param(agent.decoder.parameters()), lr=learning_rate,
-      weight_decay=weight_decay)
+      filter_param(agent.decoder.parameters()),
+    lr=args.learning_rate,
+    weight_decay=args.weight_decay)
 
   data_log = defaultdict(list)
   start = time.time()
@@ -85,16 +69,16 @@ def train(args, train_env, agent, log_every=log_every, val_envs=None):
 
   best_metrics = {}
   last_model_saved = {}
-  for idx in range(0, args.n_iters, log_every):
+  for idx in range(0, args.n_iters, args.log_every):
     agent.env = train_env
 
-    interval = min(log_every, args.n_iters-idx)
+    interval = min(args.log_every, args.n_iters-idx)
     iter = idx + interval
     data_log['iteration'].append(iter)
 
     # Train for log_every interval
     agent.train(encoder_optimizer, decoder_optimizer, interval,
-                feedback=feedback_method)
+                feedback=args.feedback_method)
     train_losses = np.array(agent.losses)
     assert len(train_losses) == interval
     train_loss_avg = np.average(train_losses)
@@ -106,7 +90,8 @@ def train(args, train_env, agent, log_every=log_every, val_envs=None):
     for env_name, (val_env, evaluator) in sorted(val_envs.items()):
       agent.env = val_env
       # Get validation loss under the same conditions as training
-      agent.test(use_dropout=True, feedback=feedback_method,
+      agent.test(use_dropout=True,
+                 feedback=args.feedback_method,
                  allow_cheat=True)
       val_losses = np.array(agent.losses)
       val_loss_avg = np.average(val_losses)
@@ -153,7 +138,7 @@ def train(args, train_env, agent, log_every=log_every, val_envs=None):
       print(s)
 
     if not args.no_save:
-      if save_every and iter % save_every == 0:
+      if args.save_every and iter % args.save_every == 0:
         agent.save(make_path(iter))
 
       df = pd.DataFrame(data_log)
@@ -172,15 +157,15 @@ def setup():
 def make_speaker(args,
                  action_embedding_size=-1,
                  feature_size=-1):
-  enc_hidden_size = hidden_size//2 if bidirectional else hidden_size
+  enc_hidden_size = args.hidden_size//2 if args.bidirectional else args.hidden_size
   glove = np.load(args.glove_path)
 
   vocab = read_vocab(TRAIN_VOCAB, args.language)
   encoder = try_cuda(SpeakerEncoderLSTM(
-      action_embedding_size, feature_size, enc_hidden_size, dropout_ratio,
-      bidirectional=bidirectional))
+      action_embedding_size, feature_size, enc_hidden_size, args.dropout_ratio,
+      bidirectional=args.bidirectional))
   decoder = try_cuda(SpeakerDecoderLSTM(
-      len(vocab), word_embedding_size, hidden_size, dropout_ratio,
+      len(vocab), args.word_embedding_size, args.hidden_size, args.dropout_ratio,
       glove=glove))
   agent = Seq2SeqSpeaker(
       None, "", encoder, decoder, args.max_instruction_length)
@@ -191,46 +176,55 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits,
                         test_instruction_limit=None,
                         instructions_per_path=None):
   setup()
-  image_features_list = ImageFeatures.from_args(args)
+  if args.env == 'r2r':
+    EnvBatch = R2RBatch
+    ImgFeatures = ImageFeatures
+  elif args.env == 'refer360':
+    EnvBatch = Refer360Batch
+    ImgFeatures = Refer360ImageFeatures
+  else:
+    raise NotImplementedError(
+        'this {} environment is not implemented.'.format(args.env))
+
+  image_features_list = ImgFeatures.from_args(args)
   feature_size = sum(
       [featurizer.feature_dim for featurizer in image_features_list]) + 128
+  if args.use_visited_embeddings:
+    feature_size += 64
+  if args.use_oracle_embeddings:
+    feature_size += 64
   action_embedding_size = feature_size
 
   vocab = read_vocab(train_vocab_path, args.language)
   tok = Tokenizer(vocab=vocab)
 
-  if args.env == 'r2r':
-    BatchEnv = R2RBatch
-  else:  # TODO
-    raise NotImplemented('this environment not implemented', args.env)
+  train_env = EnvBatch(image_features_list,
+                       splits=train_splits,
+                       tokenizer=tok,
+                       args=args)
 
-  train_env = BatchEnv(image_features_list, batch_size=batch_size,
-                       splits=train_splits, tokenizer=tok,
-                       prefix=args.prefix,
-                       language=args.language)
-
-  enc_hidden_size = hidden_size//2 if bidirectional else hidden_size
+  enc_hidden_size = args.hidden_size//2 if args.bidirectional else args.hidden_size
   glove = np.load(args.glove_path)
 
   encoder = try_cuda(SpeakerEncoderLSTM(
-      action_embedding_size, feature_size, enc_hidden_size, dropout_ratio,
-      bidirectional=bidirectional))
+      action_embedding_size, feature_size, enc_hidden_size, args.dropout_ratio,
+      bidirectional=args.bidirectional))
   decoder = try_cuda(SpeakerDecoderLSTM(
-      len(vocab), word_embedding_size, hidden_size, dropout_ratio,
+      len(vocab), args.word_embedding_size, args.hidden_size, args.dropout_ratio,
       glove=glove))
 
   test_envs = {}
   for split in test_splits:
-    b = BatchEnv(image_features_list, batch_size=batch_size,
-                 splits=[split], tokenizer=tok,
-                 instruction_limit=test_instruction_limit,
-                 prefix=args.prefix,
-                 language=args.language)
+    b = EnvBatch(image_features_list,
+                       splits=[split],
+                       tokenizer=tok,
+                       args=args)
     e = eval_speaker.SpeakerEvaluation(
         [split], instructions_per_path=instructions_per_path,
-        prefix=args.prefix)  # TODO
+        args=args)
     test_envs[split] = (b, e)
 
+  # TODO
   # test_envs = {
   #     split: (BatchEnv(image_features_list, batch_size=batch_size,
   #                      splits=[split], tokenizer=tok,
@@ -264,6 +258,7 @@ def train_setup(args):
   return agent, train_env, val_envs
 
 
+# TODO
 # Test set prediction will be handled separately
 # def test_setup(args):
 #     train_env, test_envs, encoder, decoder = make_env_and_models(
@@ -301,17 +296,49 @@ def train_val(args):
 def make_arg_parser():
   parser = argparse.ArgumentParser()
   ImageFeatures.add_args(parser)
-  parser.add_argument("--env", type=str, default='r2r')
+  Refer360ImageFeatures.add_args(parser)
   parser.add_argument(
       "--use_train_subset", action='store_true',
       help="use a subset of the original train data for validation")
-  parser.add_argument("--n_iters", type=int, default=20000)
+
+  parser.add_argument("--bidirectional", action='store_true')
+  parser.add_argument("--word_embedding_size", type=int, default=300)
+  parser.add_argument("--hidden_size", type=int, default=512)
+  parser.add_argument("--learning_rate", type=float, default=0.0001)
+  parser.add_argument("--weight_decay", type=float, default=0.0005)
+  parser.add_argument("--dropout_ratio", type=float, default=0.5)
+  parser.add_argument("--feedback_method",
+                                 choices=['teacher',
+                                          'sample'],
+                                 default='teacher')
+
+  parser.add_argument("--n_iters", type=int, default=250000)
+  parser.add_argument("--log_every", type=int, default=10000)
+  parser.add_argument("--save_every", type=int, default=10000)
   parser.add_argument("--max_instruction_length", type=int, default=80)
+  parser.add_argument("--seed", type=int, default=10)
+  parser.add_argument("--beam_size", type=int, default=1)
   parser.add_argument("--no_save", action='store_true')
   parser.add_argument("--prefix", type=str, default='R2R')
   parser.add_argument("--language", type=str, default='en-OLD')
   parser.add_argument('--glove_path', type=str,
                       default='tasks/R2R/data/train_glove.en-ALL.npy')
+  parser.add_argument("--env", type=str, default='r2r')
+  parser.add_argument("--use_intermediate", action='store_true')
+  parser.add_argument("--error_margin", type=float, default=3.0)
+  parser.add_argument('--cache_root', type=str,
+                      default='/projects/vcirik/refer360/data/cached_data_15degrees/')
+  parser.add_argument("--angle_inc", type=float, default=15.)
+  parser.add_argument('--image_list_file', type=str,
+                      default='/projects/vcirik/refer360/data/imagelist.txt')
+  parser.add_argument('--refer360_root', type=str,
+                      default='/projects/vcirik/refer360/data/continuous_grounding')
+  parser.add_argument("--add_asterix", action='store_true')
+  parser.add_argument("--use_gt_actions", action='store_true')
+  parser.add_argument("--use_visited_embeddings", action='store_true')
+  parser.add_argument("--use_oracle_embeddings", action='store_true')
+  parser.add_argument("--verbose", action='store_true')
+
   return parser
 
 

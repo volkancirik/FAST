@@ -1,27 +1,22 @@
+''' Batched Refer360 grounding environment '''
 import sys
 import os
 import copy
-from env import _build_action_embedding
-from env import R2RBatch
-from pprint import pprint
-import csv
-import numpy as np
-import math
-import json
-import random
-import networkx as nx
-import functools
-import os.path
-import paths
-import pickle
 import itertools
-from collections import namedtuple, defaultdict
-from utils import structured_map, decode_base64, k_best_indices, try_cuda, spatial_feature_from_bbox
+import csv
+import pdb
+import random
+import os.path
+
+from collections import defaultdict
+import numpy as np
+from tqdm import tqdm
 import torch
 from torch.autograd import Variable
+from env import _build_action_embedding
+from env import R2RBatch
+from utils import structured_map , try_cuda
 from refer360_sim import Refer360Simulator, WorldState
-from tqdm import tqdm
-''' Batched Refer360 grounding environment '''
 
 file_path = os.path.dirname(__file__)
 module_path = os.path.abspath(os.path.join(file_path))
@@ -30,7 +25,6 @@ module_path = os.path.abspath(os.path.join(file_path, '..', '..', 'build'))
 sys.path.append(module_path)
 csv.field_size_limit(sys.maxsize)
 
-angle_inc = 15.
 DIR2IDX = {
     'ul': 0,
     'u': 1,
@@ -43,7 +37,8 @@ DIR2IDX = {
 }
 
 
-def build_viewpoint_loc_embedding(viewIndex):
+def build_viewpoint_loc_embedding(viewIndex,
+                                  angle_inc=15.0):
   """
   Position embedding:
   heading 64D + elevation 64D
@@ -65,10 +60,28 @@ def build_viewpoint_loc_embedding(viewIndex):
     embedding[absViewIndex,   96:] = np.cos(rel_elevation)
   return embedding
 
+def _build_visited_embedding(adj_loc_list, visited):
+  n_emb = 64
+  half = int(n_emb/2)
+  embedding = np.zeros((len(adj_loc_list), n_emb), np.float32)
+  for kk,adj in enumerate(adj_loc_list):
+    val = visited[adj['nextViewpointId']]
+    embedding[kk,  0:half] = np.sin(val)
+    embedding[kk, half:] = np.cos(val)
+  return embedding
 
-_static_loc_embeddings = [
-    build_viewpoint_loc_embedding(viewIndex) for viewIndex in range(9)]
+def _build_oracle_embedding(adj_loc_list, gt_viewpoint_idx):
+  n_emb = 64
+  half = int(n_emb/2)
+  embedding = np.zeros((len(adj_loc_list), n_emb), np.float32)
 
+  for kk,adj in enumerate(adj_loc_list):
+    val = 0
+    if kk == gt_viewpoint_idx:
+      val = 1
+    embedding[kk,  0:half] = np.sin(val)
+    embedding[kk, half:] = np.cos(val)
+  return embedding
 
 def load_world_state(sim, world_state):
   sim.newEpisode(world_state)
@@ -139,6 +152,8 @@ class Refer360ImageFeatures(object):
   @staticmethod
   def from_args(args):
     feats = []
+
+    n_fovs =int((360 / args.angle_inc)*(150/args.angle_inc))
     for image_feature_type in sorted(args.refer360_image_feature_type):
       if 'none' in image_feature_type:
         feats.append(NoImageFeatures())
@@ -146,7 +161,8 @@ class Refer360ImageFeatures(object):
         feats.append(RandImageFeatures())
       if 'mean_pooled' in image_feature_type:
         feats.append(MeanPooledImageFeatures(cache_root=args.cache_root,
-                                             image_list_file=args.image_list_file))
+                                             image_list_file=args.image_list_file,
+                                             n_fovs = n_fovs))
       assert len(feats) >= 1
     return feats
 
@@ -201,15 +217,17 @@ class NoImageFeatures(Refer360ImageFeatures):
 class MeanPooledImageFeatures(Refer360ImageFeatures):
   def __init__(self,
                cache_root='',
-               image_list_file=''):
+               image_list_file='',
+               n_fovs = 240):
     self.feature_dim = 2048
     self.features = {}
+    self.n_fovs = n_fovs
 
     meta_file = os.path.join(cache_root, 'meta.npy')
     meta = np.load(meta_file, allow_pickle=True)[()]
     nodes = meta['nodes']
 
-    print('loading image features from', image_list_file)
+    print('loading image features for refer360 from', image_list_file)
     image_list = [line.strip()
                   for line in open(image_list_file)]
 
@@ -225,7 +243,7 @@ class MeanPooledImageFeatures(Refer360ImageFeatures):
 
       fov_feats = np.load(feature_file).squeeze()
 
-      for idx in range(240):
+      for idx in range(self.n_fovs):
         feats = np.zeros(
             (Refer360ImageFeatures.NUM_VIEWS, self.feature_dim), dtype=np.float32)
         feats[4, :] = fov_feats[idx]
@@ -308,7 +326,6 @@ class Refer360EnvBatch():
       load_world_state(sim, world_state)
       # load the location attribute corresponding to the action
       if action >= len(last_ob['adj_loc_list']):
-        import pdb
         pdb.set_trace()
       loc_attr = last_ob['adj_loc_list'][action]
       _navigate_to_location(
@@ -331,6 +348,8 @@ def load_datasets(splits,
                   use_intermediate=True):
   d, s = [], []
   converted = []
+  act_length = []
+  sen_length = []
   for split_name in splits:
     fname = os.path.join(
         root, '{}.[{}].imdb.npy'.format(r2r2Refer360[split_name], 'all'))
@@ -355,14 +374,29 @@ def load_datasets(splits,
         instructions = " ".join(refexp)
         new_datum['instructions'] = [instructions]
         new_datum['path'] = datum['intermediate_paths'][kk]
+        new_datum['gt_actions_path'] = datum['intermediate_paths'][kk]
         if len(new_datum['path']) <= 1:
           continue
+        act_length += [len(new_datum['path'])]
+        sen_length += [len(new_datum['instructions'][0].split(' '))]
+
         converted.append(new_datum)
     else:
       instructions = " ".join([" ".join(refexp)
-                               for refexp in datum['refexps']])
+                               for refexp in datum['refexps']]).replace('.',' . ').replace(',',' , ').replace(';',' ; ')
       datum['instructions'] = [instructions]
+      datum['gt_actions_path'] = datum['path']
+      act_length += [len(datum['path'])]
+      sen_length += [len(datum['instructions'][0].split(' '))]
+
       converted.append(datum)
+  print('min max mean path length: {:2.2f} {:2.2f} {:2.2f}'.format(np.min(act_length),
+                                                                   np.max(act_length),
+                                                                   np.mean(act_length)))
+  print('min max mean instruction length: {:2.2f} {:2.2f} {:2.2f}'.format(np.min(sen_length),
+                                                                   np.max(sen_length),
+                                                                   np.mean(sen_length)))
+  print('# of instances:',len(converted))
   return converted
 
 
@@ -377,12 +411,17 @@ class Refer360Batch(R2RBatch):
     batch_size = args.batch_size
     seed = args.seed
     beam_size = args.beam_size
-
     language = args.language
     refer360_root = args.refer360_root
     cache_root = args.cache_root
     use_intermediate = args.use_intermediate
+    use_gt_actions = args.use_gt_actions
+    use_visited_embeddings = args.use_visited_embeddings
+    use_oracle_embeddings = args.use_oracle_embeddings
+    angle_inc = args.angle_inc
 
+    self.num_views = Refer360ImageFeatures.NUM_VIEWS
+    self.angle_inc = angle_inc
     self.image_features_list = image_features_list
     self.data = []
     self.scans = []
@@ -391,6 +430,7 @@ class Refer360Batch(R2RBatch):
 
     counts = defaultdict(int)
 
+    print('loading splits:', splits)
     refer360_data = load_datasets(splits,
                                   root=refer360_root,
                                   use_intermediate=use_intermediate)
@@ -422,10 +462,13 @@ class Refer360Batch(R2RBatch):
           all_unk |= unk
         else:
           self.tokenizer = None
+        new_item['visited_viewpoints'] = defaultdict(float)
         self.data.append(new_item)
     print('unk ratio: {:3.2f} {} {}'.format(
-        total_unk / (total_unk + total_found), total_unk, total_found))
-    print('UNK vocab size and vocab:\n', len(all_unk), all_unk)
+        total_unk / (total_unk + total_found +1), total_unk, total_found))
+    print('UNK vocab size:', len(all_unk))
+    if args.verbose:
+      print('UNK vocab:\n', all_unk)
     self.scans = set(self.scans)
     self.splits = splits
     self.seed = seed
@@ -445,6 +488,16 @@ class Refer360Batch(R2RBatch):
     self.notTest = ('test' not in splits)
     self.paths = self.env.sims[0][0].paths
     self.distances = self.env.sims[0][0].distances
+    if use_gt_actions:
+      self._action_fn = self._gt_action
+      print('will use ground-truth actions')
+    else:
+      self._action_fn = self._shortest_path_action
+      print('will use shortest path actions')
+    self.use_visited_embeddings = use_visited_embeddings
+    self.use_oracle_embeddings = use_oracle_embeddings
+    self._static_loc_embeddings = [
+    build_viewpoint_loc_embedding(viewIndex, angle_inc = self.angle_inc) for viewIndex in range(9)]
 
   def set_beam_size(self, beam_size,
                     force_reload=False,
@@ -459,20 +512,18 @@ class Refer360Batch(R2RBatch):
       self.env = Refer360EnvBatch(self.batch_size, beam_size,
                                   cache_root=cache_root)
 
-  def _shortest_path_action(self, state, adj_loc_list, goalViewpointId):
+  def _gt_action(self, state, adj_loc_list, goalViewpointId, gt_path):
     '''
-    Determine next action on the shortest path to goal,
+    Determine next action on the grount-truth path to goal,
     for supervised training.
     '''
-    if state.viewpointId == goalViewpointId:
-      return 0  # do nothing
-    path = self.paths[state.viewpointId][
-        goalViewpointId]
-    nextViewpointId = path[1]
+    if len(gt_path) == 1:
+      return 0, gt_path
+    assert state.viewpointId == gt_path[0], "state.viewpointId != gt_path[0] {} != {} {} {} {}".format(state.viewpointId,gt_path[0], gt_path, adj_loc_list, state)
+    nextViewpointId = gt_path[1]
     for n_a, loc_attr in enumerate(adj_loc_list):
       if loc_attr['nextViewpointId'] == nextViewpointId:
-        return n_a
-
+        return n_a, gt_path[1:]
     # Next nextViewpointId not found! This should not happen!
     print('adj_loc_list:', adj_loc_list)
     print('nextViewpointId:', nextViewpointId)
@@ -480,30 +531,50 @@ class Refer360Batch(R2RBatch):
     print('longId:', long_id)
     raise Exception('Bug: nextViewpointId not in adj_loc_list')
 
-  def _deviation(self, state, path):
+  def _shortest_path_action(self, state, adj_loc_list, goalViewpointId, gt_path):
+    '''
+    Determine next action on the shortest path to goal,
+    for supervised training.
+    '''
+    if state.viewpointId == goalViewpointId:
+      return 0, gt_path  # do nothing
+    path = self.paths[state.viewpointId][
+        goalViewpointId]
+    nextViewpointId = path[1]
+    for n_a, loc_attr in enumerate(adj_loc_list):
+      if loc_attr['nextViewpointId'] == nextViewpointId:
+        return n_a, gt_path
+    # Next nextViewpointId not found! This should not happen!
+    print('adj_loc_list:', adj_loc_list)
+    print('nextViewpointId:', nextViewpointId)
+    long_id = '{}_{}'.format(state.scanId, state.viewpointId)
+    print('longId:', long_id)
+    raise Exception('Bug: nextViewpointId not in adj_loc_list')
+
+  def _deviation(self, state, given_path):
     all_paths = self.paths[state.viewpointId]
-    near_id = path[0]
+    near_id = given_path[0]
     near_d = len(all_paths[near_id])
-    for item in path:
+    for item in given_path:
       d = len(all_paths[item])
       if d < near_d:
         near_id = item
         near_d = d
     return near_d - 1  # MUST - 1
 
-  def _distance(self, state, shortest_path):
-    goalViewpointId = shortest_path[-1]
+  def _distance(self, state, given_path):
+    goalViewpointId = given_path[-1]
     return self.distances[state.viewpointId][goalViewpointId]
 
-  def _progress(self, state, shortest_path):
-    goalViewpointId = shortest_path[-1]
+  def _progress(self, state, given_path):
+    goalViewpointId = given_path[-1]
     if state.viewpointId == goalViewpointId:
       return 1.0
-    shortest_path_len = len(shortest_path) - 1
+    given_path_len = len(given_path) - 1
     path = self.paths[state.viewpointId][
         goalViewpointId]
     path_len = len(path) - 1
-    return 1.0 - float(path_len) / shortest_path_len
+    return 1.0 - float(path_len) / given_path_len
 
   def observe(self, world_states, beamed=False, include_teacher=True, instr_id=None):
     # start_time = time.time()
@@ -520,14 +591,27 @@ class Refer360Batch(R2RBatch):
         # assert len(feature) == 1, 'for now, only work with MeanPooled feature'
         if len(feature) == 1:
           feature_with_loc = np.concatenate(
-              (feature[0], _static_loc_embeddings[state.viewIndex]), axis=-1)
+              (feature[0], self._static_loc_embeddings[state.viewIndex]), axis=-1)
         elif len(feature) == 2:
           feature_with_loc = np.concatenate(
-              (feature[0], feature[1], _static_loc_embeddings[state.viewIndex]), axis=-1)
+              (feature[0], feature[1], self._static_loc_embeddings[state.viewIndex]), axis=-1)
         else:
           raise NotImplementedError(
               'for now, only work with MeanPooled feature or with Rand features')
         action_embedding = _build_action_embedding(adj_loc_list, feature)
+
+        teacher_action, new_path = self._action_fn(
+          state, adj_loc_list, item['gt_actions_path'][-1], item['gt_actions_path'])
+        if self.use_visited_embeddings:
+          item['visited_viewpoints'][state.viewpointId] += 1.0
+          visited_embedding = _build_visited_embedding(adj_loc_list,item['visited_viewpoints'])
+          action_embedding = np.concatenate(
+            (action_embedding, visited_embedding), axis = -1)
+        if self.use_oracle_embeddings:
+          oracle_embedding = _build_oracle_embedding(adj_loc_list,teacher_action)
+          action_embedding = np.concatenate(
+            (action_embedding, oracle_embedding), axis = -1)
+
         ob = {
             'instr_id': item['instr_id'],
             'scan': state.scanId,
@@ -541,8 +625,8 @@ class Refer360Batch(R2RBatch):
             'instructions': item['instructions'],
         }
         if include_teacher and self.notTest:
-          ob['teacher'] = self._shortest_path_action(
-              state, adj_loc_list, item['path'][-1])
+          ob['teacher'] = teacher_action
+          self.batch[i]['gt_actions_path'] = new_path
           ob['deviation'] = self._deviation(state, item['path'])
           ob['progress'] = self._progress(state, item['path']),
           ob['distance'] = self._distance(state, item['path']),

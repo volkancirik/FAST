@@ -157,6 +157,9 @@ class BaseAgent(object):
     random.seed(1)
     self.results = {}
     self.losses = []  # For learning agents
+    self.encoder = None
+    self.decoder = None
+    self.prog_monitor = None
 
   def write_test_results(self):
     results = []
@@ -331,9 +334,6 @@ class Seq2SeqAgent(BaseAgent):
     ''' Extract precomputed features into variable. '''
     feature_lists = list(zip(*[ob['feature']
                                for ob in (flatten(obs) if beamed else obs)]))
-    # assert len(feature_lists) == len(self.env.image_features_list), 'len(feature_lists) == len(self.env.image_features_list) {} != {}'.format(
-    #     len(feature_lists), len(self.env.image_features_list))
-    ###
     batched = []
     for featurizer, feature_list in zip(self.env.image_features_list, feature_lists):
       batched.append(featurizer.batch_features(feature_list))
@@ -509,6 +509,7 @@ class Seq2SeqAgent(BaseAgent):
 
     # get mask and lengths
     seq, seq_mask, seq_lengths = self._proc_batch(initial_obs)
+    num_classes = self.env.num_views
 
     # Forward through encoder, giving initial hidden state and memory cell for decoder
     # TODO consider not feeding this into the decoder, and just using attention
@@ -615,6 +616,8 @@ class Seq2SeqAgent(BaseAgent):
 
       # Supervised training
       target = self._teacher_action(obs, ended)
+
+
       self.ce_loss += ce_criterion(logit, target)
       total_num_elem += np.size(ended) - np.count_nonzero(ended)
 
@@ -656,6 +659,13 @@ class Seq2SeqAgent(BaseAgent):
       if self.scorer:
         traj_h = proposal_h[np.arange(batch_size), a_t, :]
         traj_c = proposal_c[np.arange(batch_size), a_t, :]
+
+      _, pred_indices = torch.max(_logit, 1)
+      for bb in range(pred_indices.size(0)):
+        self.confusion[a_t[bb],pred_indices[bb]] += 1.0
+        self.timestep2hit[0,t] += int(a_t[bb] == pred_indices[bb])
+        self.timestep2cnt[0,t] += 1.0
+      # TODO: without for loop
 
       action_scores = - \
           F.cross_entropy(_logit, a_t, ignore_index=-1, reduction='none').data
@@ -839,7 +849,8 @@ class Seq2SeqAgent(BaseAgent):
       _logit[is_valid == 0] = -float('inf')
 
       # Expand nodes
-      ac_lens = np.argmax(is_valid == 0, axis=1).detach()
+#      ac_lens = np.argmax(is_valid == 0, axis=1).detach()
+      ac_lens = np.argmax(is_valid.cpu().numpy() == 0, axis=1)
       ac_lens[ac_lens == 0] = is_valid.shape[1]
 
       h_t_data, c_t_data = h_t.detach(), c_t.detach()
@@ -905,7 +916,7 @@ class Seq2SeqAgent(BaseAgent):
         # selectively expand nodes
         K = self.K
         select_k = _len if _len < K else K
-        top_ac = list(torch.topk(_logit[idx][:_len], select_k)[1])
+        top_ac = list(torch.topk(_logit[idx][:_len], int(select_k))[1])
         if self.inject_stop and 0 not in top_ac:
           top_ac.append(0)
 
@@ -1806,6 +1817,13 @@ class Seq2SeqAgent(BaseAgent):
     self.dv_losses = []
     self.pm_losses = []
     self.bt_losses = []
+    num_classes = self.env.num_views
+    self.confusion =  torch.zeros(num_classes, num_classes).float()
+
+
+    self.timestep2hit =  torch.zeros(1, self.episode_len).float()
+    self.timestep2cnt =  torch.zeros(1, self.episode_len).float()
+
     it = range(1, n_iters + 1)
     try:
       import tqdm
@@ -1885,7 +1903,9 @@ class Seq2SeqAgent(BaseAgent):
     pm_loss = np.average(self.pm_losses)
     loss_str = 'loss {:.3f}|ce {:.3f}|pm {:.3f}|dv {:.3f} '.format(
         val_loss, ce_loss, pm_loss, dv_loss)
+    confusion = self.confusion / self.confusion.sum()
+    timestep2acc = self.timestep2hit / self.timestep2cnt
     return loss_str, {'loss': val_loss,
                       'ce': ce_loss,
                       'pm': pm_loss,
-                      'dv': dv_loss}
+                      'dv': dv_loss}, {'confusion':confusion,'timestep2acc' : timestep2acc}
