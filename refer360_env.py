@@ -15,7 +15,7 @@ import torch
 from torch.autograd import Variable
 from env import _build_action_embedding
 from env import R2RBatch
-from utils import structured_map , try_cuda
+from utils import structured_map, try_cuda
 from refer360_sim import Refer360Simulator, WorldState
 
 file_path = os.path.dirname(__file__)
@@ -60,28 +60,31 @@ def build_viewpoint_loc_embedding(viewIndex,
     embedding[absViewIndex,   96:] = np.cos(rel_elevation)
   return embedding
 
+
 def _build_visited_embedding(adj_loc_list, visited):
   n_emb = 64
   half = int(n_emb/2)
   embedding = np.zeros((len(adj_loc_list), n_emb), np.float32)
-  for kk,adj in enumerate(adj_loc_list):
+  for kk, adj in enumerate(adj_loc_list):
     val = visited[adj['nextViewpointId']]
     embedding[kk,  0:half] = np.sin(val)
     embedding[kk, half:] = np.cos(val)
   return embedding
+
 
 def _build_oracle_embedding(adj_loc_list, gt_viewpoint_idx):
   n_emb = 64
   half = int(n_emb/2)
   embedding = np.zeros((len(adj_loc_list), n_emb), np.float32)
 
-  for kk,adj in enumerate(adj_loc_list):
+  for kk, adj in enumerate(adj_loc_list):
     val = 0
     if kk == gt_viewpoint_idx:
       val = 1
     embedding[kk,  0:half] = np.sin(val)
     embedding[kk, half:] = np.cos(val)
   return embedding
+
 
 def load_world_state(sim, world_state):
   sim.newEpisode(world_state)
@@ -153,7 +156,7 @@ class Refer360ImageFeatures(object):
   def from_args(args):
     feats = []
 
-    n_fovs =int((360 / args.angle_inc)*(150/args.angle_inc))
+    n_fovs = int((360 / args.angle_inc)*(150/args.angle_inc))
     for image_feature_type in sorted(args.refer360_image_feature_type):
       if 'none' in image_feature_type:
         feats.append(NoImageFeatures())
@@ -162,7 +165,8 @@ class Refer360ImageFeatures(object):
       if 'mean_pooled' in image_feature_type:
         feats.append(MeanPooledImageFeatures(cache_root=args.cache_root,
                                              image_list_file=args.image_list_file,
-                                             n_fovs = n_fovs))
+                                             n_fovs=n_fovs,
+                                             feature_model=args.refer360_image_feature_model))
       assert len(feats) >= 1
     return feats
 
@@ -172,6 +176,9 @@ class Refer360ImageFeatures(object):
                                  choices=['none', 'random',
                                           'mean_pooled'],
                                  default=['mean_pooled'])
+    argument_parser.add_argument("--refer360_image_feature_model",
+                                 choices=['resnet', 'clip'],
+                                 default='resnet')
 
   def get_name(self):
     raise NotImplementedError("base class does not have get_name")
@@ -214,12 +221,20 @@ class NoImageFeatures(Refer360ImageFeatures):
     return "none"
 
 
+MODEL2PREFIX = {'resnet': '',
+                'clip': '.clip'}
+MODEL2FEATURE_DIM = {'resnet': 2048,
+                     'clip': 512}
+
+
 class MeanPooledImageFeatures(Refer360ImageFeatures):
   def __init__(self,
                cache_root='',
                image_list_file='',
-               n_fovs = 240):
-    self.feature_dim = 2048
+               feature_model='resnet',
+               n_fovs=240):
+    self.feature_dim = MODEL2FEATURE_DIM[feature_model]
+    self.feature_model = MODEL2PREFIX[feature_model]
     self.features = {}
     self.n_fovs = n_fovs
 
@@ -236,7 +251,7 @@ class MeanPooledImageFeatures(Refer360ImageFeatures):
     for fname in pbar:
       pano = fname.split('/')[-1].split('.')[0]
       feature_file = os.path.join(
-          cache_root, 'features', '{}'.format(pano) + '.npy')
+          cache_root, 'features', '{}'.format(pano) + self.feature_model + '.npy')
       if not os.path.exists(feature_file):
         print('file missing:', feature_file)
         quit(0)
@@ -264,7 +279,7 @@ class MeanPooledImageFeatures(Refer360ImageFeatures):
     return self.features[long_id]
 
   def get_name(self):
-    name = "mean_pooled"
+    name = "mean_pooled"+self.feature_model
     return name
 
 
@@ -383,7 +398,7 @@ def load_datasets(splits,
         converted.append(new_datum)
     else:
       instructions = " ".join([" ".join(refexp)
-                               for refexp in datum['refexps']]).replace('.',' . ').replace(',',' , ').replace(';',' ; ')
+                               for refexp in datum['refexps']]).replace('.', ' . ').replace(',', ' , ').replace(';', ' ; ')
       datum['instructions'] = [instructions]
       datum['gt_actions_path'] = datum['path']
       act_length += [len(datum['path'])]
@@ -391,12 +406,14 @@ def load_datasets(splits,
 
       converted.append(datum)
   print('min max mean path length: {:2.2f} {:2.2f} {:2.2f}'.format(np.min(act_length),
-                                                                   np.max(act_length),
-                                                                   np.mean(act_length)))
+                                                                   np.max(
+      act_length),
+      np.mean(act_length)))
   print('min max mean instruction length: {:2.2f} {:2.2f} {:2.2f}'.format(np.min(sen_length),
-                                                                   np.max(sen_length),
-                                                                   np.mean(sen_length)))
-  print('# of instances:',len(converted))
+                                                                          np.max(
+      sen_length),
+      np.mean(sen_length)))
+  print('# of instances:', len(converted))
   return converted
 
 
@@ -465,7 +482,7 @@ class Refer360Batch(R2RBatch):
         new_item['visited_viewpoints'] = defaultdict(float)
         self.data.append(new_item)
     print('unk ratio: {:3.2f} {} {}'.format(
-        total_unk / (total_unk + total_found +1), total_unk, total_found))
+        total_unk / (total_unk + total_found + 1), total_unk, total_found))
     print('UNK vocab size:', len(all_unk))
     if args.verbose:
       print('UNK vocab:\n', all_unk)
@@ -497,7 +514,7 @@ class Refer360Batch(R2RBatch):
     self.use_visited_embeddings = use_visited_embeddings
     self.use_oracle_embeddings = use_oracle_embeddings
     self._static_loc_embeddings = [
-    build_viewpoint_loc_embedding(viewIndex, angle_inc = self.angle_inc) for viewIndex in range(9)]
+        build_viewpoint_loc_embedding(viewIndex, angle_inc=self.angle_inc) for viewIndex in range(9)]
 
   def set_beam_size(self, beam_size,
                     force_reload=False,
@@ -519,7 +536,8 @@ class Refer360Batch(R2RBatch):
     '''
     if len(gt_path) == 1:
       return 0, gt_path
-    assert state.viewpointId == gt_path[0], "state.viewpointId != gt_path[0] {} != {} {} {} {}".format(state.viewpointId,gt_path[0], gt_path, adj_loc_list, state)
+    assert state.viewpointId == gt_path[0], "state.viewpointId != gt_path[0] {} != {} {} {} {}".format(
+        state.viewpointId, gt_path[0], gt_path, adj_loc_list, state)
     nextViewpointId = gt_path[1]
     for n_a, loc_attr in enumerate(adj_loc_list):
       if loc_attr['nextViewpointId'] == nextViewpointId:
@@ -601,16 +619,18 @@ class Refer360Batch(R2RBatch):
         action_embedding = _build_action_embedding(adj_loc_list, feature)
 
         teacher_action, new_path = self._action_fn(
-          state, adj_loc_list, item['gt_actions_path'][-1], item['gt_actions_path'])
+            state, adj_loc_list, item['gt_actions_path'][-1], item['gt_actions_path'])
         if self.use_visited_embeddings:
           item['visited_viewpoints'][state.viewpointId] += 1.0
-          visited_embedding = _build_visited_embedding(adj_loc_list,item['visited_viewpoints'])
+          visited_embedding = _build_visited_embedding(
+              adj_loc_list, item['visited_viewpoints'])
           action_embedding = np.concatenate(
-            (action_embedding, visited_embedding), axis = -1)
+              (action_embedding, visited_embedding), axis=-1)
         if self.use_oracle_embeddings:
-          oracle_embedding = _build_oracle_embedding(adj_loc_list,teacher_action)
+          oracle_embedding = _build_oracle_embedding(
+              adj_loc_list, teacher_action)
           action_embedding = np.concatenate(
-            (action_embedding, oracle_embedding), axis = -1)
+              (action_embedding, oracle_embedding), axis=-1)
 
         ob = {
             'instr_id': item['instr_id'],

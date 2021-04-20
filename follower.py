@@ -311,7 +311,13 @@ class Seq2SeqAgent(BaseAgent):
   # forward_index = FORWARD_ACTION_INDEX
   # end_index = END_ACTION_INDEX
 
-  def __init__(self, env, results_path, encoder, decoder, episode_len=10, beam_size=1, reverse_instruction=True, max_instruction_length=80, attn_only_verb=False):
+  def __init__(self, env, results_path, encoder, decoder,
+               episode_len=10,
+               beam_size=1,
+               reverse_instruction=True,
+               max_instruction_length=80,
+               attn_only_verb=False,
+               clip_rate = 100.):
     super(self.__class__, self).__init__(env, results_path)
     self.encoder = encoder
     self.decoder = decoder
@@ -329,6 +335,7 @@ class Seq2SeqAgent(BaseAgent):
     self.speaker = None
     self.soft_align = False
     self.want_loss = False
+    self.clip_rate = clip_rate
 
   def _feature_variables(self, obs, beamed=False):
     ''' Extract precomputed features into variable. '''
@@ -1840,6 +1847,8 @@ class Seq2SeqAgent(BaseAgent):
       if type(self.loss) is torch.Tensor:
         self.loss.backward()
       for opt in optimizers:
+        for module in self.modules():
+          torch.nn.utils.clip_grad_norm_(module.parameters(), self.clip_rate)
         opt.step()
 
   def _encoder_and_decoder_paths(self, base_path):

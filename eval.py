@@ -19,9 +19,9 @@ import train
 from collections import namedtuple
 
 EvalResult = namedtuple(
-  "EvalResult", "nav_error, oracle_error, trajectory_steps, "
-  "trajectory_length, success, oracle_success, spl, "
-  "cls, ndtw")
+    "EvalResult", "nav_error, oracle_error, trajectory_steps, "
+    "trajectory_length, success, oracle_success, spl, "
+    "cls, ndtw")
 
 
 class Evaluation(object):
@@ -101,17 +101,19 @@ class Evaluation(object):
     dtw = dtw_matrix[len(prediction)][len(reference)]
     ndtw = np.exp(-dtw / (self.error_margin * len(reference)))
     return ndtw
+
   def length(self, scan, nodes):
     return float(np.sum([self.distances[scan][edge[0]][edge[1]]
                          for edge in zip(nodes[:-1], nodes[1:])]))
 
   def cls(self, scan, prediction, reference):
     coverage = np.mean([np.exp(
-      -np.min([self.distances[scan][u][v] for v in prediction]) / self.error_margin
+        -np.min([self.distances[scan][u][v]
+                 for v in prediction]) / self.error_margin
     ) for u in reference])
     expected = coverage * self.length(scan, reference)
     score = expected \
-            / (expected + np.abs(expected - self.length(scan, prediction)))
+        / (expected + np.abs(expected - self.length(scan, prediction)))
     return coverage * score
 
   def _score_item(self, instr_id, path):
@@ -156,8 +158,8 @@ class Evaluation(object):
         (float(sp_length) / max(trajectory_length, sp_length))
 
     prediction_path = [p[0] for p in path]
-    cls = self.cls(gt['scan'],prediction_path,gt['path'])
-    ndtw = self.ndtw(gt['scan'],prediction_path,gt['path'])
+    cls = self.cls(gt['scan'], prediction_path, gt['path'])
+    ndtw = self.ndtw(gt['scan'], prediction_path, gt['path'])
 
     return EvalResult(nav_error=nav_error, oracle_error=oracle_error,
                       trajectory_steps=trajectory_steps,
@@ -204,17 +206,17 @@ class Evaluation(object):
 
     assert len(self.scores['nav_errors']) == len(self.instr_ids)
     score_summary = {
-      'nav_error': np.average(self.scores['nav_errors']),
-      'oracle_error': np.average(self.scores['oracle_errors']),
-      'steps': np.average(self.scores['trajectory_steps']),
-      'lengths': np.average(self.scores['trajectory_lengths']),
-      'success_rate': float(
+        'nav_error': np.average(self.scores['nav_errors']),
+        'oracle_error': np.average(self.scores['oracle_errors']),
+        'steps': np.average(self.scores['trajectory_steps']),
+        'lengths': np.average(self.scores['trajectory_lengths']),
+        'success_rate': float(
             sum(self.scores['success']) / len(self.scores['success'])),
-      'oracle_rate': float(sum(self.scores['oracle_success'])
+        'oracle_rate': float(sum(self.scores['oracle_success'])
                              / len(self.scores['oracle_success'])),
-      'spl': float(sum(self.scores['spl'])) / len(self.scores['spl']),
-      'cls' : float(sum(self.scores['cls'])) / len(self.scores['cls']),
-      'ndtw' : float(sum(self.scores['ndtw'])) / len(self.scores['ndtw']),
+        'spl': float(sum(self.scores['spl'])) / len(self.scores['spl']),
+        'cls': float(sum(self.scores['cls'])) / len(self.scores['cls']),
+        'ndtw': float(sum(self.scores['ndtw'])) / len(self.scores['ndtw']),
     }
     if len(model_scores) > 0:
       assert len(model_scores) == instr_count
@@ -228,7 +230,7 @@ class Evaluation(object):
         [i for i in self.scores['oracle_errors'] if i < self.error_margin])
     assert float(oracle_successes) / float(len(self.scores['oracle_errors'])) == score_summary['oracle_rate']  # NoQA
     # score_summary['oracle_rate'] = float(oracle_successes) / float(len(self.scores['oracle_errors']))  # NoQA
-    return score_summary, self.scores, None
+    return score_summary, self.scores, {}
 
   def score_file(self, output_file):
     ''' Evaluate each agent trajectory based on how close it got to the
@@ -373,7 +375,7 @@ def eval_outfiles(outfolder):
       if s in outfile:
         _splits.append(s)
     ev = Evaluation(_splits)
-    score_summary, _, _= ev.score_file(outfile)
+    score_summary, _, _ = ev.score_file(outfile)
     print('\n', outfile)
     pp.pprint(score_summary)
 
