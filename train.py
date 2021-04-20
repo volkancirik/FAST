@@ -270,10 +270,10 @@ def make_follower(args, vocab,
                                           args.hidden_size)) if args.dev_monitor else None
 
   agent = Seq2SeqAgent(
-    None, "", encoder, decoder, args.max_episode_len,
-    max_instruction_length=args.max_input_length,
-    attn_only_verb=args.attn_only_verb,
-    clip_rate =args.clip_rate)
+      None, "", encoder, decoder, args.max_episode_len,
+      max_instruction_length=args.max_input_length,
+      attn_only_verb=args.attn_only_verb,
+      clip_rate=args.clip_rate)
   agent.prog_monitor = prog_monitor
   agent.dev_monitor = dev_monitor
   agent.bt_button = bt_button
@@ -444,7 +444,7 @@ def make_arg_parser():
   parser.add_argument("--load_follower", type=str, default='')
   parser.add_argument("--load_traj_encoder", type=str, default='')
   parser.add_argument("--feedback_method",
-                      choices=["sample", "teacher", "sample1step", "sample2step", "sample3step", "teacher+sample", "recover","argmax"], default="sample")
+                      choices=["sample", "teacher", "sample1step", "sample2step", "sample3step", "teacher+sample", "recover", "argmax"], default="sample")
   parser.add_argument("--debug", action='store_true')
 
   parser.add_argument("--bidirectional", action='store_true')
@@ -490,7 +490,6 @@ def make_arg_parser():
   parser.add_argument('--cache_root', type=str,
                       default='/projects/vcirik/refer360/data/cached_data_30degrees/')
   parser.add_argument("--clip_rate", type=float, default=100.)
-                      default='/home/vcirik/refer360/data/cached_data_30degrees/')
   parser.add_argument("--angle_inc", type=float, default=30.)
   parser.add_argument('--image_list_file', type=str,
                       default='/home/vcirik/refer360/data/imagelist.txt')
