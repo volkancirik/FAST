@@ -435,7 +435,7 @@ def make_arg_parser():
   parser.add_argument("--load_follower", type=str, default='')
   parser.add_argument("--load_traj_encoder", type=str, default='')
   parser.add_argument("--feedback_method",
-                      choices=["sample", "teacher", "sample1step", "sample2step", "sample3step", "teacher+sample", "recover"], default="sample")
+                      choices=["sample", "teacher", "sample1step", "sample2step", "sample3step", "teacher+sample", "recover","argmax"], default="sample")
   parser.add_argument("--debug", action='store_true')
 
   parser.add_argument("--bidirectional", action='store_true')

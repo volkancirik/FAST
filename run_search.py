@@ -115,7 +115,7 @@ def _train(args, train_env, agent, optimizers,
       agent.test(use_dropout=False, feedback='argmax')
       if not args.no_save:
         agent.write_results()
-      score_summary, _ = evaluator.score_results(agent.results)
+      score_summary, _, _ = evaluator.score_results(agent.results)
 
       for metric, val in sorted(score_summary.items()):
         data_log['%s %s' % (env_name, metric)].append(val)
@@ -221,7 +221,7 @@ def sweep_gamma(args, agent, val_envs, gamma_space):
       agent.test(use_dropout=False, feedback='argmax')
       if not args.no_save:
         agent.write_results()
-      score_summary, _ = evaluator.score_results(agent.results)
+      score_summary, _, _ = evaluator.score_results(agent.results)
       pp.pprint(score_summary)
 
       for metric, val in sorted(score_summary.items()):
@@ -275,7 +275,7 @@ def run_search(args, agent, train_env, val_envs):
                           results_path='%s/%s_clean.json' % (args.RESULT_DIR, env_name))
       with open(agent.records_path, 'w') as f:
         json.dump(agent.records, f)
-    score_summary, _ = evaluator.score_results(agent.results)
+    score_summary, _, _ = evaluator.score_results(agent.results)
     pp.pprint(score_summary)
 
 
@@ -323,7 +323,7 @@ def make_arg_parser():
   parser.add_argument("--revisit", action='store_true')
   parser.add_argument("--inject_stop", action='store_true')
   parser.add_argument("--load_reranker", type=str, default='')
-  parser.add_argument("--K", type=int, default=10)
+  parser.add_argument("--K", type=int, default=20)
   parser.add_argument("--beam", action='store_true')
   parser.add_argument("--load_speaker", type=str,
                       default='')
