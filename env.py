@@ -900,6 +900,7 @@ class R2RBatch():
     beam_size = args.beam_size
     prefix = args.prefix
     language = args.language
+
     self.num_views = ImageFeatures.NUM_VIEWS
     self.image_features_list = image_features_list
     self.data = []

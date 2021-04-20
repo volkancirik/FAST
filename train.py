@@ -268,9 +268,10 @@ def make_follower(args, vocab,
                                           args.hidden_size)) if args.dev_monitor else None
 
   agent = Seq2SeqAgent(
-      None, "", encoder, decoder, args.max_episode_len,
-      max_instruction_length=args.max_input_length,
-      attn_only_verb=args.attn_only_verb)
+    None, "", encoder, decoder, args.max_episode_len,
+    max_instruction_length=args.max_input_length,
+    attn_only_verb=args.attn_only_verb,
+    clip_rate =args.clip_rate)
   agent.prog_monitor = prog_monitor
   agent.dev_monitor = dev_monitor
   agent.bt_button = bt_button
@@ -480,6 +481,7 @@ def make_arg_parser():
   parser.add_argument("--error_margin", type=float, default=3.0)
   parser.add_argument('--cache_root', type=str,
                       default='/projects/vcirik/refer360/data/cached_data_30degrees/')
+  parser.add_argument("--clip_rate", type=float, default=100.)
   parser.add_argument("--angle_inc", type=float, default=30.)
   parser.add_argument('--image_list_file', type=str,
                       default='/projects/vcirik/refer360/data/imagelist.txt')
