@@ -21,7 +21,7 @@ from model import SpeakerEncoderLSTM, DotScorer
 from follower import Seq2SeqAgent, RandomAgent
 from scorer import Scorer
 
-from refer360_env import Refer360Batch, Refer360ImageFeatures
+from refer360_env import Refer360Batch, Refer360ImageFeatures, make_sim
 import eval
 import refer360_eval
 from vocab import SUBTRAIN_VOCAB, TRAINVAL_VOCAB, TRAIN_VOCAB
@@ -62,20 +62,17 @@ def eval_model(agent, results_path, use_dropout, feedback, allow_cheat=False):
 def train(args, train_env, agent, optimizers, n_iters, val_envs=None):
   ''' Train on training set, validating on both seen and unseen. '''
 
-
   if val_envs is None:
     val_envs = {}
   split_string = "-".join(train_env.splits)
   print('Training with %s feedback' % args.feedback_method)
   writer_path = os.path.join(args.PLOT_DIR, get_model_prefix(
-              args, train_env.image_features_list))
+      args, train_env.image_features_list))
   writer = SummaryWriter(writer_path)
-  print('tensorboard path is',writer_path)
+  print('tensorboard path is', writer_path)
 
   data_log = defaultdict(list)
   start = time.time()
-
-
 
   def make_path(n_iter):
     return os.path.join(
@@ -100,11 +97,11 @@ def train(args, train_env, agent, optimizers, n_iters, val_envs=None):
     loss_str += env_name + ' ' + _loss_str
     for k, v in losses.items():
       data_log['%s %s' % (env_name, k)].append(v)
-      writer.add_scalar('{} {}'.format(env_name,k),v,iter)
+      writer.add_scalar('{} {}'.format(env_name, k), v, iter)
 
-    for k,v in images.items():
+    for k, v in images.items():
       img_conf = get_confusion_matrix_image(
-        [[str(v) for v in range(v.size(1))],[str(v) for v in range(v.size(0))]], v.cpu().numpy(), '')
+          [[str(v) for v in range(v.size(1))], [str(v) for v in range(v.size(0))]], v.cpu().numpy(), '')
       writer.add_image(k, img_conf, iter)
 
     save_log = []
@@ -118,8 +115,7 @@ def train(args, train_env, agent, optimizers, n_iters, val_envs=None):
       loss_str += ', ' + env_name + ' ' + _loss_str
       for k, v in losses.items():
         data_log['%s %s' % (env_name, k)].append(v)
-        writer.add_scalar('{} {}'.format(env_name,k),v,iter)
-
+        writer.add_scalar('{} {}'.format(env_name, k), v, iter)
 
       agent.results_path = '%s/%s_%s_iter_%d.json' % (
           args.RESULT_DIR, get_model_prefix(
@@ -130,26 +126,29 @@ def train(args, train_env, agent, optimizers, n_iters, val_envs=None):
       agent.test(use_dropout=False, feedback='argmax')
 
       print("evaluating on {}".format(env_name))
-      score_summary, all_scores, score_analysis = evaluator.score_results(agent.results)
+      score_summary, all_scores, score_analysis = evaluator.score_results(
+          agent.results)
 
       scores_path = make_path(iter) + "_%s_scores.npy" % (
-        env_name)
+          env_name)
       print('scores stats are dumped to %s' % scores_path)
       with open(scores_path, 'wb') as f:
-        np.save(f,all_scores)
+        np.save(f, all_scores)
 
       for metric, val in sorted(score_summary.items()):
 
-        writer.add_scalar('{} {}'.format(env_name,metric),val,iter)
+        writer.add_scalar('{} {}'.format(env_name, metric), val, iter)
         data_log['%s %s' % (env_name, metric)].append(val)
         if metric in args.metrics.split(','):
 
           for analysis in score_analysis:
             keys = sorted(score_analysis[analysis][metric].keys())
-            means = [np.mean(score_analysis[analysis][metric][key]) for key in keys]
-            stds = [np.std(score_analysis[analysis][metric][key]) for key in keys]
+            means = [np.mean(score_analysis[analysis][metric][key])
+                     for key in keys]
+            stds = [np.std(score_analysis[analysis][metric][key])
+                    for key in keys]
             x_pos = np.arange(len(keys))
-            img_bar =get_bar_image(x_pos, keys, means, stds)
+            img_bar = get_bar_image(x_pos, keys, means, stds)
             writer.add_image(analysis+'_'+metric, img_bar, iter)
 
           loss_str += ', %s: %.3f' % (metric, val)
@@ -171,7 +170,6 @@ def train(args, train_env, agent, optimizers, n_iters, val_envs=None):
               last_model_saved[key] = [] +\
                   list(agent.modules_paths(model_path))
 
-
     print(('%s (%d %d%%) %s' % (
         timeSince(start, float(iter)/n_iters),
         iter, float(iter)/n_iters*100, loss_str)))
@@ -187,7 +185,7 @@ def train(args, train_env, agent, optimizers, n_iters, val_envs=None):
       df_path = '%s/%s_%s_log.csv' % (
           args.PLOT_DIR, get_model_prefix(
               args, train_env.image_features_list), split_string)
-      print('data_log written to',df_path)
+      print('data_log written to', df_path)
       df.to_csv(df_path)
 
 
@@ -204,6 +202,7 @@ def make_more_train_env(args, train_vocab_path, train_splits):
   elif args.env == 'refer360':
     EnvBatch = Refer360Batch
     ImgFeatures = Refer360ImageFeatures
+
   else:
     raise NotImplementedError(
         'this {} environment is not implemented.'.format(args.env))
@@ -224,7 +223,8 @@ def make_scorer(args,
                 feature_size=-1):
   bidirectional = args.bidirectional
 
-  enc_hidden_size = int(args.hidden_size/2) if bidirectional else args.hidden_size
+  enc_hidden_size = int(
+      args.hidden_size/2) if bidirectional else args.hidden_size
   traj_encoder = try_cuda(SpeakerEncoderLSTM(action_embedding_size, feature_size,
                                              enc_hidden_size, args.dropout_ratio,
                                              bidirectional=args.bidirectional))
@@ -247,12 +247,14 @@ def make_follower(args, vocab,
     agent = RandomAgent
     return agent
 
-  enc_hidden_size = int(args.hidden_size//2) if args.bidirectional else args.hidden_size
+  enc_hidden_size = int(
+      args.hidden_size//2) if args.bidirectional else args.hidden_size
   glove = np.load(args.glove_path) if args.use_glove else None
   Encoder = TransformerEncoder if args.transformer else EncoderLSTM
   Decoder = CogroundDecoderLSTM if args.coground else AttnDecoderLSTM
-  word_embedding_size = int(args.hidden_size / 2) if args.coground or args.bidirectional else args.hidden_size
-  encoder = try_cuda(Encoder(len(vocab), word_embedding_size, enc_hidden_size, vocab_pad_idx,args.dropout_ratio,
+  word_embedding_size = int(
+      args.hidden_size / 2) if args.coground or args.bidirectional else args.hidden_size
+  encoder = try_cuda(Encoder(len(vocab), word_embedding_size, enc_hidden_size, vocab_pad_idx, args.dropout_ratio,
                              bidirectional=args.bidirectional, glove=glove))
 
   decoder = try_cuda(Decoder(
@@ -300,6 +302,12 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
     EnvBatch = Refer360Batch
     ImgFeatures = Refer360ImageFeatures
     Eval = refer360_eval.Refer360Evaluation
+    sim = make_sim(args.cache_root,
+                   Refer360ImageFeatures.IMAGE_W,
+                   Refer360ImageFeatures.IMAGE_H,
+                   Refer360ImageFeatures.VFOV)
+    sim.load_maps()
+    args.sim = sim
   else:
     raise NotImplementedError(
         'this {} environment is not implemented.'.format(args.env))
@@ -459,7 +467,7 @@ def make_arg_parser():
   parser.add_argument("--num_head", type=int, default=1)
   parser.add_argument("--grad", type=str, default='all')
 
-  parser.add_argument("--use_pretraining", action='store_true')  
+  parser.add_argument("--use_pretraining", action='store_true')
   parser.add_argument("--pretrain_splits", nargs="+", default=[])
   parser.add_argument("--n_pretrain_iters", type=int, default=50000)
 
@@ -479,12 +487,12 @@ def make_arg_parser():
   parser.add_argument("--use_intermediate", action='store_true')
   parser.add_argument("--error_margin", type=float, default=3.0)
   parser.add_argument('--cache_root', type=str,
-                      default='/projects/vcirik/refer360/data/cached_data_30degrees/')
+                      default='/home/vcirik/refer360/data/cached_data_30degrees/')
   parser.add_argument("--angle_inc", type=float, default=30.)
   parser.add_argument('--image_list_file', type=str,
-                      default='/projects/vcirik/refer360/data/imagelist.txt')
+                      default='/home/vcirik/refer360/data/imagelist.txt')
   parser.add_argument('--refer360_root', type=str,
-                default='/projects/vcirik/refer360/data/continuous_grounding_30degrees')
+                      default='/home/vcirik/refer360/data/continuous_grounding_30degrees')
   parser.add_argument("--add_asterix", action='store_true')
   parser.add_argument("--use_gt_actions", action='store_true')
   parser.add_argument("--use_visited_embeddings", action='store_true')

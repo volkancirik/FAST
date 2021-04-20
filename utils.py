@@ -16,6 +16,13 @@ import base64
 import heapq
 from nltk.corpus import wordnet as wn
 import torch
+import io
+import PIL.Image
+from matplotlib.pyplot import cm
+import matplotlib.pyplot as plt
+from torchvision.transforms import ToTensor
+import matplotlib
+matplotlib.use('agg')
 
 
 class DotDict(dict):
@@ -460,15 +467,10 @@ class NumpyEncoder(json.JSONEncoder):
       return obj.tolist()
     return json.JSONEncoder.default(self, obj)
 
-import io
-import PIL.Image
-from matplotlib.pyplot import cm
-import matplotlib.pyplot as plt
-from torchvision.transforms import ToTensor
 
 def get_confusion_matrix_image(labels, matrix, title='Title', tight=False, cmap=cm.copper):
 
-  labels_x,labels_y = labels
+  labels_x, labels_y = labels
   fig, ax = plt.subplots()
   _ = ax.imshow(matrix, cmap=cmap)
 
@@ -497,14 +499,15 @@ def get_confusion_matrix_image(labels, matrix, title='Title', tight=False, cmap=
   plt.close('all')
   return image
 
+
 def get_bar_image(x_pos, x_labels, means, errors,
-                  tight = False,
-                  title = 'Title'):
+                  tight=False,
+                  title='Title'):
   plt.figure(figsize=(24, 12))
   fig, ax = plt.subplots()
 
-
-  ax.bar(x_pos, means, yerr=errors, align='center', alpha=0.5, ecolor='black', capsize=10)
+  ax.bar(x_pos, means, yerr=errors, align='center',
+         alpha=0.5, ecolor='black', capsize=10)
   ax.set_xticks(x_pos)
   ax.set_xticklabels(x_labels)
   ax.yaxis.grid(True)

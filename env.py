@@ -105,6 +105,17 @@ def build_viewpoint_loc_embedding(viewIndex):
   return embedding
 
 
+def _build_visited_embedding(adj_loc_list, visited):
+  n_emb = 64
+  half = int(n_emb/2)
+  embedding = np.zeros((len(adj_loc_list), n_emb), np.float32)
+  for kk, adj in enumerate(adj_loc_list):
+    val = visited[adj['nextViewpointId']]
+    embedding[kk,  0:half] = np.sin(val)
+    embedding[kk, half:] = np.cos(val)
+  return embedding
+
+
 # pre-compute all the 36 possible paranoram location embeddings
 _static_loc_embeddings = [
     build_viewpoint_loc_embedding(viewIndex) for viewIndex in range(36)]
@@ -337,6 +348,9 @@ class ImageFeatures(object):
             'convolutional_attention has not been implemented for panorama environment')
       if 'mean_pooled' in image_feature_type:
         feats.append(MeanPooledImageFeatures(args.image_feature_datasets))
+      if 'clip' in image_feature_type:
+        feats.append(ClipImageFeatures(args.image_feature_datasets))
+
       assert len(feats) >= 1
     return feats
 
@@ -344,6 +358,7 @@ class ImageFeatures(object):
   def add_args(argument_parser):
     argument_parser.add_argument("--image_feature_type", nargs="+",
                                  choices=['none',
+                                          'clip',
                                           'mean_pooled',
                                           'convolutional_attention',
                                           'bottom_up_attention',
@@ -428,6 +443,52 @@ class MeanPooledImageFeatures(ImageFeatures):
           long_id = self._make_id(item['scanId'], item['viewpointId'])
           features = np.frombuffer(decode_base64(item['features']), dtype=np.float32).reshape(
               (ImageFeatures.NUM_VIEWS, ImageFeatures.MEAN_POOLED_DIM))
+          self.features[long_id].append(features)
+    assert all(len(feats) == len(self.mean_pooled_feature_stores)
+               for feats in self.features.values())
+    self.features = {
+        long_id: np.concatenate(feats, axis=1)
+        for long_id, feats in self.features.items()
+    }
+
+  def _make_id(self, scanId, viewpointId):
+    return scanId + '_' + viewpointId
+
+  def get_features(self, state):
+    long_id = self._make_id(state.scanId, state.location.viewpointId)
+    # Return feature of all the 36 views
+    return self.features[long_id]
+
+  def get_name(self):
+    name = '+'.join(sorted(self.image_feature_datasets))
+    name = "{}_mean_pooled".format(name)
+    return name
+
+
+class ClipImageFeatures(ImageFeatures):
+  def __init__(self, image_feature_datasets):
+    image_feature_datasets = sorted(image_feature_datasets)
+    self.image_feature_datasets = image_feature_datasets
+
+    self.mean_pooled_feature_stores = [
+        paths.mean_pooled_feature_store_paths['clip']]
+    self.feature_dim = 512
+    print('Loading image features from %s' %
+          ', '.join(self.mean_pooled_feature_stores))
+    tsv_fieldnames = ['scanId', 'viewpointId',
+                      'image_w', 'image_h', 'vfov', 'features']
+    self.features = defaultdict(list)
+    for mpfs in self.mean_pooled_feature_stores:
+      with open(mpfs, "rt") as tsv_in_file:
+        reader = csv.DictReader(
+            tsv_in_file, delimiter='\t', fieldnames=tsv_fieldnames)
+        for item in reader:
+          assert int(item['image_h']) == ImageFeatures.IMAGE_H
+          assert int(item['image_w']) == ImageFeatures.IMAGE_W
+          assert int(item['vfov']) == ImageFeatures.VFOV
+          long_id = self._make_id(item['scanId'], item['viewpointId'])
+          features = np.frombuffer(decode_base64(item['features']), dtype=np.float32).reshape(
+              (ImageFeatures.NUM_VIEWS, 512))
           self.features[long_id].append(features)
     assert all(len(feats) == len(self.mean_pooled_feature_stores)
                for feats in self.features.values())
@@ -900,6 +961,7 @@ class R2RBatch():
     beam_size = args.beam_size
     prefix = args.prefix
     language = args.language
+    self.use_visited_embeddings = args.use_visited_embeddings
     self.num_views = ImageFeatures.NUM_VIEWS
     self.image_features_list = image_features_list
     self.data = []
@@ -933,6 +995,7 @@ class R2RBatch():
           all_unk |= unk
         else:
           self.tokenizer = None
+        new_item['visited_viewpoints'] = defaultdict(float)
         self.data.append(new_item)
     print('unk ratio: {:3.2f} {} {}'.format(
         total_unk / (total_unk + total_found), total_unk, total_found))
@@ -1076,6 +1139,15 @@ class R2RBatch():
           raise NotImplementedError(
               'for now, only work with MeanPooled feature or with Rand features')
         action_embedding = _build_action_embedding(adj_loc_list, feature)
+        teacher_action = self._shortest_path_action(
+            state, adj_loc_list, item['path'][-1])
+        if self.use_visited_embeddings:
+          item['visited_viewpoints'][state.location.viewpointId] += 1.0
+          visited_embedding = _build_visited_embedding(
+              adj_loc_list, item['visited_viewpoints'])
+          action_embedding = np.concatenate(
+              (action_embedding, visited_embedding), axis=-1)
+
         ob = {
             'instr_id': item['instr_id'],
             'scan': state.scanId,
@@ -1091,8 +1163,7 @@ class R2RBatch():
             'instructions': item['instructions'],
         }
         if include_teacher and self.notTest:
-          ob['teacher'] = self._shortest_path_action(
-              state, adj_loc_list, item['path'][-1])
+          ob['teacher'] = teacher_action
           ob['deviation'] = self._deviation(state, item['path'])
           ob['progress'] = self._progress(state, item['path']),
           ob['distance'] = self._distance(state, item['path']),

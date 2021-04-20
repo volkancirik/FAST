@@ -20,10 +20,10 @@ from collections import namedtuple
 
 
 EvalResult = namedtuple(
-  "EvalResult", "nav_error, oracle_error, trajectory_steps, "
-  "trajectory_length, success, oracle_success, spl, "
-  "fov_accuracy, acc_20, acc_40, acc_60,"
-  "cls, ndtw")
+    "EvalResult", "nav_error, oracle_error, trajectory_steps, "
+    "trajectory_length, success, oracle_success, spl, "
+    "fov_accuracy, acc_20, acc_40, acc_60,"
+    "cls, ndtw")
 
 
 class Refer360Evaluation(object):
@@ -38,7 +38,7 @@ class Refer360Evaluation(object):
     refer360_root = args.refer360_root
     cache_root = args.cache_root
     error_margin = args.error_margin
-
+    self.sim = args.sim
 
     self.splits = splits
     self.gt = {}
@@ -66,11 +66,11 @@ class Refer360Evaluation(object):
     self.scans = set(self.scans)
     self.instr_ids = set(self.instr_ids)
 
-    self.sim = make_sim(cache_root,
-                   Refer360ImageFeatures.IMAGE_W,
-                   Refer360ImageFeatures.IMAGE_H,
-                   Refer360ImageFeatures.VFOV)
-    self.sim.load_maps()
+    # self.sim = make_sim(cache_root,
+    #                Refer360ImageFeatures.IMAGE_W,
+    #                Refer360ImageFeatures.IMAGE_H,
+    #                Refer360ImageFeatures.VFOV)
+    # self.sim.load_maps()
     self.nodes = self.sim.nodes
     self.distances = self.sim.distances
     self.error_margin = error_margin*270.0  # error_margin * max FOV distance
@@ -102,17 +102,18 @@ class Refer360Evaluation(object):
     dtw = dtw_matrix[len(prediction)][len(reference)]
     ndtw = np.exp(-dtw / (self.error_margin * len(reference)))
     return ndtw
+
   def length(self, nodes):
     return float(np.sum([self.distances[edge[0]][edge[1]]
                          for edge in zip(nodes[:-1], nodes[1:])]))
 
   def cls(self, prediction, reference):
     coverage = np.mean([np.exp(
-      -np.min([self.distances[u][v] for v in prediction]) / self.error_margin
+        -np.min([self.distances[u][v] for v in prediction]) / self.error_margin
     ) for u in reference])
     expected = coverage * self.length(reference)
     score = expected \
-            / (expected + np.abs(expected - self.length(prediction)))
+        / (expected + np.abs(expected - self.length(prediction)))
     return coverage * score
 
   def _score_item(self, instr_id, path):
@@ -141,7 +142,7 @@ class Refer360Evaluation(object):
     if res != None:
       fov_accuracy = 1.0
       distance = np.sqrt(((res[0] - 200)
-                         ** 2 + (res[1] - 200)**2))
+                          ** 2 + (res[1] - 200)**2))
       for th in [20, 40, 60]:
         metrics['acc_{}'.format(th)] += int(distance <= th)
     else:
@@ -175,18 +176,18 @@ class Refer360Evaluation(object):
         (float(sp_length) / traj_length)
 
     prediction_path = [p[0] for p in path]
-    cls = self.cls(prediction_path,gt['path'])
-    ndtw = self.ndtw(prediction_path,gt['path'])
+    cls = self.cls(prediction_path, gt['path'])
+    ndtw = self.ndtw(prediction_path, gt['path'])
 
     return EvalResult(nav_error=nav_error, oracle_error=oracle_error,
                       trajectory_steps=trajectory_steps,
                       trajectory_length=trajectory_length, success=success,
                       oracle_success=oracle_success,
                       spl=spl,
-                      fov_accuracy = fov_accuracy,
-                      acc_20 = metrics['acc_20'],
-                      acc_40 = metrics['acc_40'],
-                      acc_60 = metrics['acc_60'],
+                      fov_accuracy=fov_accuracy,
+                      acc_20=metrics['acc_20'],
+                      acc_40=metrics['acc_40'],
+                      acc_60=metrics['acc_60'],
                       cls=cls,
                       ndtw=ndtw)
 
@@ -196,9 +197,9 @@ class Refer360Evaluation(object):
     # return a dict with key being a evaluation metric
     self.scores = defaultdict(list)
 
-    loc2scores, scene2scores, traj_length2scores, inst_length2scores = {},{},{},{}
+    loc2scores, scene2scores, traj_length2scores, inst_length2scores = {}, {}, {}, {}
     for key in EvalResult._fields:
-      loc2scores[key]  = defaultdict(list)
+      loc2scores[key] = defaultdict(list)
       scene2scores[key] = defaultdict(list)
       traj_length2scores[key] = defaultdict(list)
       inst_length2scores[key] = defaultdict(list)
@@ -215,10 +216,11 @@ class Refer360Evaluation(object):
         instr_ids.remove(instr_id)
         eval_result = self._score_item(instr_id, result['trajectory'])
 
-        img_path =self.gt[result['instr_id'].split('_')[0]]['img_src']
+        img_path = self.gt[result['instr_id'].split('_')[0]]['img_src']
         img_loc = img_path.split('/')[3]
         img_scene = img_path.split('/')[4]
-        traj_length = len(self.gt[result['instr_id'].split('_')[0]]['gt_actions_path'])
+        traj_length = len(
+            self.gt[result['instr_id'].split('_')[0]]['gt_actions_path'])
         inst_length = result['instr_encoding'].shape[0]
 
         self.scores['nav_error'].append(eval_result.nav_error)
@@ -269,25 +271,25 @@ class Refer360Evaluation(object):
 
     assert len(self.scores['nav_error']) == len(self.instr_ids)
     score_summary = {
-      'nav_error': np.average(self.scores['nav_error']),
-      'oracle_error': np.average(self.scores['oracle_error']),
-      'steps': np.average(self.scores['trajectory_steps']),
-      'lengths': np.average(self.scores['trajectory_length']),
-      'success_rate': float(
+        'nav_error': np.average(self.scores['nav_error']),
+        'oracle_error': np.average(self.scores['oracle_error']),
+        'steps': np.average(self.scores['trajectory_steps']),
+        'lengths': np.average(self.scores['trajectory_length']),
+        'success_rate': float(
             sum(self.scores['success']) / len(self.scores['success'])),
-      'oracle_rate': float(sum(self.scores['oracle_success'])
+        'oracle_rate': float(sum(self.scores['oracle_success'])
                              / len(self.scores['oracle_success'])),
-      'spl': float(sum(self.scores['spl'])) / len(self.scores['spl']),
-      'fov_accuracy': float(
+        'spl': float(sum(self.scores['spl'])) / len(self.scores['spl']),
+        'fov_accuracy': float(
             sum(self.scores['fov_accuracy']) / len(self.scores['fov_accuracy'])),
-      'acc_20': float(
+        'acc_20': float(
             sum(self.scores['acc_20']) / len(self.scores['acc_20'])),
-      'acc_40': float(
+        'acc_40': float(
             sum(self.scores['acc_40']) / len(self.scores['acc_40'])),
-      'acc_60': float(
+        'acc_60': float(
             sum(self.scores['acc_60']) / len(self.scores['acc_60'])),
-      'cls' : float(sum(self.scores['cls'])) / len(self.scores['cls']),
-      'ndtw' : float(sum(self.scores['ndtw'])) / len(self.scores['ndtw']),
+        'cls': float(sum(self.scores['cls'])) / len(self.scores['cls']),
+        'ndtw': float(sum(self.scores['ndtw'])) / len(self.scores['ndtw']),
     }
     if len(model_scores) > 0:
       assert len(model_scores) == instr_count
@@ -302,10 +304,10 @@ class Refer360Evaluation(object):
     assert float(oracle_successes) / float(len(self.scores['oracle_error'])) == score_summary['oracle_rate']  # NoQA
     # score_summary['oracle_rate'] = float(oracle_successes) / float(len(self.scores['oracle_error']))  # NoQA
 
-    analysis = {'loc2scores' : loc2scores,
+    analysis = {'loc2scores': loc2scores,
                 'scene2scores': scene2scores,
-                'traj_length2scores' : traj_length2scores,
-                'inst_length2scores' : inst_length2scores
+                'traj_length2scores': traj_length2scores,
+                'inst_length2scores': inst_length2scores
                 }
     return score_summary, self.scores, analysis
 
