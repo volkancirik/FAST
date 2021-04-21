@@ -489,7 +489,7 @@ def make_arg_parser():
   parser.add_argument("--error_margin", type=float, default=3.0)
   parser.add_argument('--cache_root', type=str,
                       default='refer360_data/cached_data_30degrees/')
-  parser.add_argument("--clip_rate", type=float, default=100.)
+  parser.add_argument("--clip_rate", type=float, default=0.)
   parser.add_argument("--angle_inc", type=float, default=30.)
   parser.add_argument('--image_list_file', type=str,
                       default='refer360_data/imagelist.txt')

@@ -1847,8 +1847,9 @@ class Seq2SeqAgent(BaseAgent):
       if type(self.loss) is torch.Tensor:
         self.loss.backward()
       for opt in optimizers:
-        for module in self.modules():
-          torch.nn.utils.clip_grad_norm_(module.parameters(), self.clip_rate)
+        if self.clip_rate > 0:
+          for module in self.modules():
+            torch.nn.utils.clip_grad_norm_(module.parameters(), self.clip_rate)
         opt.step()
 
   def _encoder_and_decoder_paths(self, base_path):
