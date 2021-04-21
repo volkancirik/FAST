@@ -488,13 +488,16 @@ def make_arg_parser():
   parser.add_argument("--use_intermediate", action='store_true')
   parser.add_argument("--error_margin", type=float, default=3.0)
   parser.add_argument('--cache_root', type=str,
-                      default='/projects/vcirik/refer360/data/cached_data_30degrees/')
+                      default='refer360_data/cached_data_30degrees/')
   parser.add_argument("--clip_rate", type=float, default=100.)
   parser.add_argument("--angle_inc", type=float, default=30.)
   parser.add_argument('--image_list_file', type=str,
-                      default='/home/vcirik/refer360/data/imagelist.txt')
+                      default='refer360_data/imagelist.txt')
   parser.add_argument('--refer360_root', type=str,
-                      default='/home/vcirik/refer360/data/continuous_grounding_30degrees')
+                      default='refer360_data/continuous_grounding_30degrees')
+  parser.add_argument('--butd_filename', type=str,
+                      default='img_features/refer360_30degrees_obj36.tsv')
+
   parser.add_argument("--add_asterix", action='store_true')
   parser.add_argument("--use_gt_actions", action='store_true')
   parser.add_argument("--use_visited_embeddings", action='store_true')

@@ -17,7 +17,7 @@ from env import _build_action_embedding
 from env import R2RBatch
 from utils import structured_map, try_cuda
 from refer360_sim import Refer360Simulator, WorldState
-
+import base64
 file_path = os.path.dirname(__file__)
 module_path = os.path.abspath(os.path.join(file_path))
 sys.path.append(module_path)
@@ -167,6 +167,12 @@ class Refer360ImageFeatures(object):
                                              image_list_file=args.image_list_file,
                                              n_fovs=n_fovs,
                                              feature_model=args.refer360_image_feature_model))
+      if 'butd' in image_feature_type:
+        feats.append(BUTDImageFeatures(cache_root=args.cache_root,
+                                       image_list_file=args.image_list_file,
+                                       butd_filename=args.butd_filename,
+                                       n_fovs=n_fovs,))
+
       assert len(feats) >= 1
     return feats
 
@@ -174,7 +180,7 @@ class Refer360ImageFeatures(object):
   def add_args(argument_parser):
     argument_parser.add_argument("--refer360_image_feature_type", nargs="+",
                                  choices=['none', 'random',
-                                          'mean_pooled'],
+                                          'mean_pooled', 'butd'],
                                  default=['mean_pooled'])
     argument_parser.add_argument("--refer360_image_feature_model",
                                  choices=['resnet', 'clip'],
@@ -280,6 +286,87 @@ class MeanPooledImageFeatures(Refer360ImageFeatures):
 
   def get_name(self):
     name = "mean_pooled"+self.feature_model
+    return name
+
+
+class BUTDImageFeatures(Refer360ImageFeatures):
+  def __init__(self, butd_filename='',
+               cache_root='',
+               image_list_file='',
+               n_fovs=240):
+
+    print('Loading bottom-up top-down features')
+    self.features = defaultdict(list)
+    self.feature_dim = 2048
+    self.n_fovs = n_fovs
+
+    FIELDNAMES = ["img_id", "img_h", "img_w", "objects_id", "objects_conf",
+                  "attrs_id", "attrs_conf", "num_boxes", "boxes", "features"]
+    self.features = {}
+
+    fov2feat = {}
+    with open(butd_filename) as f:
+      reader = csv.DictReader(f, FIELDNAMES, delimiter="\t")
+      for i, item in enumerate(reader):
+
+        for key in ['img_h', 'img_w', 'num_boxes']:
+          item[key] = int(item[key])
+
+        boxes = item['num_boxes']
+        decode_config = [
+            ('objects_id', (boxes, ), np.int64),
+            ('objects_conf', (boxes, ), np.float32),
+            ('attrs_id', (boxes, ), np.int64),
+            ('attrs_conf', (boxes, ), np.float32),
+            ('boxes', (boxes, 4), np.float32),
+            ('features', (boxes, -1), np.float32),
+        ]
+        for key, shape, dtype in decode_config:
+          item[key] = np.frombuffer(base64.b64decode(item[key]), dtype=dtype)
+          item[key] = item[key].reshape(shape)
+          item[key].setflags(write=False)
+
+        scanId, viewpointId = item['img_id'].split('.')
+
+        pano_fov = self._make_id(scanId, viewpointId)
+        feats = np.sum(item['features'], axis=0)
+        fov2feat[pano_fov] = feats
+
+    meta_file = os.path.join(cache_root, 'meta.npy')
+    meta = np.load(meta_file, allow_pickle=True)[()]
+    nodes = meta['nodes']
+
+    print('loaded BUTD features', image_list_file)
+    print('preparing image features for refer360..')
+    image_list = [line.strip()
+                  for line in open(image_list_file)]
+    pbar = tqdm(image_list)
+
+    for fname in pbar:
+      pano = fname.split('/')[-1].split('.')[0]
+
+      for idx in range(self.n_fovs):
+        feats = np.zeros(
+            (Refer360ImageFeatures.NUM_VIEWS, self.feature_dim), dtype=np.float32)
+        feats[4, :] = fov2feat['{}_{}'.format(pano, idx)]
+
+        for neighbor in nodes[idx]['neighbor2dir']:
+          n_direction = nodes[idx]['neighbor2dir'][neighbor]
+          dir_idx = DIR2IDX[n_direction]
+          feats[dir_idx, :] = fov2feat['{}_{}'.format(pano, neighbor)]
+        pano_fov = self._make_id(pano, idx)
+        self.features[pano_fov] = feats
+    print('image features for refer360 are prepared.')
+
+  def _make_id(self, scanId, viewpointId):
+    return '{}_{}'.format(scanId, viewpointId)
+
+  def get_features(self, state):
+    long_id = self._make_id(state.scanId, state.viewpointId)
+    return self.features[long_id]
+
+  def get_name(self):
+    name = "_with_butd"
     return name
 
 
