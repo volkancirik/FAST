@@ -178,7 +178,15 @@ class Evaluation(object):
     instr_ids = set(self.instr_ids)
 
     instr_count = 0
-    for instr_id, result in results.items():
+
+    if type(results) == dict:
+      results_list = [(instr_id, result)
+                      for instr_id, result in results.items()]
+    else:
+      results_list = [(result['instr_id'], result) for result in results]
+
+#    for instr_id, result in results.items():
+    for instr_id, result in results_list:
       if instr_id in instr_ids:
         instr_count += 1
         instr_ids.remove(instr_id)
@@ -366,7 +374,8 @@ def eval_seq2seq():
       pp.pprint(score_summary)
 
 
-def eval_outfiles(outfolder):
+def eval_outfiles(args):
+  outfolder = args.results_folder
   splits = ['val_seen', 'val_unseen']
   for _f in os.listdir(outfolder):
     outfile = os.path.join(outfolder, _f)
@@ -374,7 +383,7 @@ def eval_outfiles(outfolder):
     for s in splits:
       if s in outfile:
         _splits.append(s)
-    ev = Evaluation(_splits)
+    ev = Evaluation(_splits, args=args)
     score_summary, _, _ = ev.score_file(outfile)
     print('\n', outfile)
     pp.pprint(score_summary)
@@ -382,5 +391,8 @@ def eval_outfiles(outfolder):
 
 if __name__ == '__main__':
   from train import make_arg_parser
-  utils.run(make_arg_parser(), eval_simple_agents)
+  # TODO: take function to run as argument
+  utils.run(make_arg_parser(), eval_outfiles)
+  #utils.run(make_arg_parser(), eval_simple_agents)
+
   # eval_seq2seq()
