@@ -8,29 +8,23 @@ import time
 import numpy as np
 import pandas as pd
 from collections import defaultdict
-import argparse
-import pprint
-pp = pprint.PrettyPrinter(indent=4)
 
 import utils
-from utils import read_vocab, Tokenizer, vocab_pad_idx, timeSince, try_cuda
-from utils import filter_param, module_grad, colorize
+from utils import timeSince, try_cuda
+from utils import filter_param, colorize
 from utils import NumpyEncoder
 
-from env import R2RBatch, ImageFeatures
-from refer360_env import Refer360Batch, Refer360ImageFeatures
+from env import ImageFeatures
+from refer360_env import Refer360ImageFeatures
 import refer360_eval
 
-from model import EncoderLSTM, AttnDecoderLSTM
-from model import SpeakerEncoderLSTM, DotScorer
 from model import SimpleCandReranker
-from follower import Seq2SeqAgent
-from scorer import Scorer
 from make_speaker import make_speaker
 import eval
 
 import train
-from vocab import SUBTRAIN_VOCAB, TRAINVAL_VOCAB, TRAIN_VOCAB
+import pprint
+pp = pprint.PrettyPrinter(indent=4)
 
 learning_rate = 0.0001
 weight_decay = 0.0005
@@ -92,10 +86,9 @@ def _train(args, train_env, agent, optimizers,
       if hasattr(agent, 'speaker') and agent.speaker:
         agent.speaker.env = val_env
 
-      agent.results_path =  os.path.join(
-        args.RESULT_DIR, '%s_%s_iter_%d.json' % (get_model_prefix(args, train_env.image_features_list),
-            split_string, iter))
-
+      agent.results_path = os.path.join(
+          args.RESULT_DIR, '%s_%s_iter_%d.json' % (get_model_prefix(args, train_env.image_features_list),
+                                                   split_string, iter))
 
       # Get validation loss under the same conditions as training
       agent.test(use_dropout=True, feedback=args.feedback_method,
@@ -146,7 +139,7 @@ def _train(args, train_env, agent, optimizers,
       print(colorize(s))
 
     if not args.no_save:
-      if save_every and iter % save_every == 0:
+      if args.log_every and iter % args.log_every == 0:
         agent.save(make_path(iter))
 
       df = pd.DataFrame(data_log)
@@ -295,7 +288,6 @@ def cache(args, agent, train_env, val_envs):
     raise NotImplementedError(
         'this {} environment is not implemented.'.format(args.env))
 
-
   print(cache_env_name)
   for env_name, env in zip(cache_env_name, cache_env):
     # if env_name is not 'val_unseen': continue
@@ -309,7 +301,8 @@ def cache(args, agent, train_env, val_envs):
         json.dump(agent.cache_candidates, outfile, cls=NumpyEncoder)
       with open('search_{}{}{}{}.json'.format(env_name, '_debug' if args.debug else '', args.max_episode_len, args.early_stop), 'w') as outfile:
         json.dump(agent.cache_search, outfile, cls=NumpyEncoder)
-    score_summary, _, _ = Eval(env.splits, args=args).score_results(agent.results)
+    score_summary, _, _ = Eval(
+        env.splits, args=args).score_results(agent.results)
     pp.pprint(score_summary)
 
 
@@ -344,7 +337,7 @@ def setup_agent_envs(args):
 def test(args, agent, val_envs):
 
   for test_split in val_envs.keys():
-    print('testing agent on',test_split)
+    print('testing agent on', test_split)
     test_env = val_envs[test_split][0]
     test_env.notTest = False
 
@@ -355,7 +348,7 @@ def test(args, agent, val_envs):
         args.RESULT_DIR, get_model_prefix(
             args, test_env.image_features_list), test_split)
 
-    print('results_path:',agent.results_path)
+    print('results_path:', agent.results_path)
     agent.test(use_dropout=False, feedback='argmax')
     agent.write_test_results()
   print("finished testing. recommended to save the trajectory again")
@@ -377,10 +370,10 @@ def main(args):
     agent, train_env, val_envs = setup_agent_envs(args)
 
   if args.env == 'r2r':
-#    EnvBatch = R2RBatch
+    #    EnvBatch = R2RBatch
     ImgFeatures = ImageFeatures
   elif args.env == 'refer360':
-#    EnvBatch = Refer360Batch
+    #    EnvBatch = Refer360Batch
     ImgFeatures = Refer360ImageFeatures
   else:
     raise NotImplementedError(
@@ -406,7 +399,7 @@ def main(args):
   agent.beam = args.beam
 
   # Load speaker
-  if args.load_speaker is not '':
+  if args.load_speaker != '':
     speaker = make_speaker(args,
                            action_embedding_size=feature_size,
                            feature_size=feature_size)

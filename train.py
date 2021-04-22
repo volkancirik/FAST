@@ -507,6 +507,8 @@ def make_arg_parser():
   parser.add_argument('--metrics', type=str,
                       default='success_rate',
                       help='Success metric, default=success_rate')
+  parser.add_argument('--results_folder', type=str,
+                      default='')
 
   return parser
 
