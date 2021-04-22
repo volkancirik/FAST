@@ -199,10 +199,11 @@ class BaseAgent(object):
     self.clean_results = {}
 
     # We rely on env showing the entire batch before repeating anything
-    #print 'Testing %s' % self.__class__.__name__
+    # print 'Testing %s' % self.__class__.__name__
     looped = False
     rollout_scores = []
     beam_10_scores = []
+
     with torch.no_grad():
       while True:
         rollout_results = self.rollout()
@@ -317,7 +318,7 @@ class Seq2SeqAgent(BaseAgent):
                reverse_instruction=True,
                max_instruction_length=80,
                attn_only_verb=False,
-               clip_rate = 100.):
+               clip_rate=100.):
     super(self.__class__, self).__init__(env, results_path)
     self.encoder = encoder
     self.decoder = decoder
@@ -624,7 +625,6 @@ class Seq2SeqAgent(BaseAgent):
       # Supervised training
       target = self._teacher_action(obs, ended)
 
-
       self.ce_loss += ce_criterion(logit, target)
       total_num_elem += np.size(ended) - np.count_nonzero(ended)
 
@@ -669,9 +669,9 @@ class Seq2SeqAgent(BaseAgent):
 
       _, pred_indices = torch.max(_logit, 1)
       for bb in range(pred_indices.size(0)):
-        self.confusion[a_t[bb],pred_indices[bb]] += 1.0
-        self.timestep2hit[0,t] += int(a_t[bb] == pred_indices[bb])
-        self.timestep2cnt[0,t] += 1.0
+        self.confusion[a_t[bb], pred_indices[bb]] += 1.0
+        self.timestep2hit[0, t] += int(a_t[bb] == pred_indices[bb])
+        self.timestep2cnt[0, t] += 1.0
       # TODO: without for loop
 
       action_scores = - \
@@ -1825,11 +1825,10 @@ class Seq2SeqAgent(BaseAgent):
     self.pm_losses = []
     self.bt_losses = []
     num_classes = self.env.num_views
-    self.confusion =  torch.zeros(num_classes, num_classes).float()
+    self.confusion = torch.zeros(num_classes, num_classes).float()
 
-
-    self.timestep2hit =  torch.zeros(1, self.episode_len).float()
-    self.timestep2cnt =  torch.zeros(1, self.episode_len).float()
+    self.timestep2hit = torch.zeros(1, self.episode_len).float()
+    self.timestep2cnt = torch.zeros(1, self.episode_len).float()
 
     it = range(1, n_iters + 1)
     try:
@@ -1918,4 +1917,4 @@ class Seq2SeqAgent(BaseAgent):
     return loss_str, {'loss': val_loss,
                       'ce': ce_loss,
                       'pm': pm_loss,
-                      'dv': dv_loss}, {'confusion':confusion,'timestep2acc' : timestep2acc}
+                      'dv': dv_loss}, {'confusion': confusion, 'timestep2acc': timestep2acc}

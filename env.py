@@ -961,6 +961,7 @@ class R2RBatch():
     beam_size = args.beam_size
     prefix = args.prefix
     language = args.language
+    add_asterix = args.add_asterix
 
     self.use_visited_embeddings = args.use_visited_embeddings
     self.num_views = ImageFeatures.NUM_VIEWS
@@ -972,12 +973,25 @@ class R2RBatch():
 
     counts = defaultdict(int)
 
+    if prefix == 'r2r':
+      instr_key = 'path_id'
+    elif prefix == 'REVERIE':
+      instr_key = 'id'
+    else:
+      raise NotImplementedError(
+          'dataset prefix {} not implemented'.format(prefix))
+
     total_unk, total_found, all_unk = 0, 0, set()
     for item in load_datasets(splits, prefix=prefix):
-      path_id = item['path_id']
+      path_id = item[instr_key]
       count = counts[path_id]
       counts[path_id] += 1
-      self.gt[item['path_id']] = item
+      if add_asterix:
+        new_path_id = '{}*{}'.format(path_id, count)
+        item[instr_key] = new_path_id
+
+      self.gt['{}'.format(item[instr_key])] = item
+
       instructions = item['instructions']
       if instruction_limit:
         instructions = instructions[:instruction_limit]
@@ -985,7 +999,7 @@ class R2RBatch():
       for j, instr in enumerate(instructions):
         self.scans.append(item['scan'])
         new_item = dict(item)
-        new_item['instr_id'] = '%s_%d' % (item['path_id'], j)
+        new_item['instr_id'] = '%s_%d' % (item[instr_key], j)
         new_item['instructions'] = instr
         if tokenizer:
           self.tokenizer = tokenizer
@@ -996,7 +1010,6 @@ class R2RBatch():
           all_unk |= unk
         else:
           self.tokenizer = None
-        new_item['visited_viewpoints'] = defaultdict(float)
         self.data.append(new_item)
     print('unk ratio: {:3.2f} {} {}'.format(
         total_unk / (total_unk + total_found), total_unk, total_found))
@@ -1064,7 +1077,12 @@ class R2RBatch():
     if sort_instr_length:
       batch = sorted(
           batch, key=lambda item: item['instr_length'], reverse=True)
-    self.batch = batch
+
+    new_batch = []
+    for item in batch:
+      item['visited_viewpoints'] = defaultdict(float)
+      new_batch.append(item)
+    self.batch = new_batch
 
   def reset_epoch(self):
     ''' Reset the data index to beginning of epoch. Primarily for testing.

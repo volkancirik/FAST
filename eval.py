@@ -13,7 +13,7 @@ from env import R2RBatch, ImageFeatures
 import utils
 from utils import load_datasets, load_nav_graphs
 from follower import BaseAgent
-
+import pdb
 import train
 
 from collections import namedtuple
@@ -43,30 +43,39 @@ class Evaluation(object):
     self.scans = []
     self.instructions = {}
     counts = defaultdict(int)
-    for item in load_datasets(splits, prefix=prefix):
 
-      path_id = item['path_id']
+    if prefix == 'r2r':
+      instr_key = 'path_id'
+    elif prefix == 'REVERIE':
+      instr_key = 'id'
+    else:
+      raise NotImplementedError(
+          'dataset prefix {} not implemented'.format(prefix))
+
+    for item in load_datasets(splits, prefix=prefix):
+      path_id = item[instr_key]
       count = counts[path_id]
       counts[path_id] += 1
       if add_asterix:
         new_path_id = '{}*{}'.format(path_id, count)
         item['path_id'] = new_path_id
 
-      self.gt[item['path_id']] = item
+      self.gt['{}'.format(item[instr_key])] = item
       self.scans.append(item['scan'])
       if prefix == 'R2R':
         self.instr_ids += [
-            '{}_{}'.format(item['path_id'], i) for i in range(3)]
+            '{}_{}'.format(item[instr_key], i) for i in range(3)]
       elif 'RxR' in prefix:
         self.instr_ids += [
-            '{}_{}'.format(item['path_id'], i) for i in range(1)]
+            '{}_{}'.format(item[instr_key], i) for i in range(1)]
       elif 'REVERIE' == prefix:
-        self.instr_ids += ['{}_{}'.format(item['path_id'], i) for i in
+        self.instr_ids += ['{}_{}'.format(item[instr_key], i) for i in
                            range(len(item['instructions']))]
+#        pdb.set_trace()
       else:
         raise NotImplementedError()
       for j, instruction in enumerate(item['instructions']):
-        self.instructions['{}_{}'.format(item['path_id'], j)] = instruction
+        self.instructions['{}_{}'.format(item[instr_key], j)] = instruction
     self.scans = set(self.scans)
     self.instr_ids = set(self.instr_ids)
     self.graphs = load_nav_graphs(self.scans)
@@ -120,7 +129,7 @@ class Evaluation(object):
     ''' Calculate error based on the final position in trajectory, and also
         the closest position (oracle stopping rule). '''
 
-    key = instr_id.split('_')[0]
+    key = '_'.join(instr_id.split('_')[:-1])
     if key in self.gt:
       gt = self.gt[key]
     elif int(key) in self.gt:

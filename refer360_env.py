@@ -566,7 +566,6 @@ class Refer360Batch(R2RBatch):
           all_unk |= unk
         else:
           self.tokenizer = None
-        new_item['visited_viewpoints'] = defaultdict(float)
         self.data.append(new_item)
     print('unk ratio: {:3.2f} {} {}'.format(
         total_unk / (total_unk + total_found + 1), total_unk, total_found))
