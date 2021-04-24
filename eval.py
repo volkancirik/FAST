@@ -1,5 +1,6 @@
 ''' Evaluation of agent trajectories '''
-
+import argparse
+import sys
 import os
 import json
 from collections import defaultdict
@@ -385,7 +386,7 @@ def eval_seq2seq():
 
 
 def eval_outfiles(args):
-  outfolder = args.results_folder
+  outfolder = args.results_path
   splits = ['val_seen', 'val_unseen']
   for _f in os.listdir(outfolder):
     outfile = os.path.join(outfolder, _f)
@@ -402,5 +403,9 @@ def eval_outfiles(args):
 if __name__ == '__main__':
   from train import make_arg_parser
   # TODO: take function to run as argument
-  utils.run(make_arg_parser(), eval_outfiles)
-  #utils.run(make_arg_parser(), eval_simple_agents)
+  parser = make_arg_parser()
+  parser.add_argument('--results_path', type=str,
+                      default='')
+
+  utils.run(parser, eval_outfiles)
+  # utils.run(make_arg_parser(), eval_simple_agents)

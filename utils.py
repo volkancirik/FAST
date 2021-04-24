@@ -93,7 +93,7 @@ def decode_base64(string):
     return base64.decodebytes(bytearray(string, 'utf-8'))
   else:
     raise ValueError(
-        "decode_base64 can't handle python version {}".format(sys.version_info[0]))
+        'decode_base64 can not handle python version {}'.format(sys.version_info[0]))
 
 
 class Tokenizer(object):
@@ -176,7 +176,7 @@ class Tokenizer(object):
       else:
         sentence.append(self.vocab[ix])
     if join:
-      return " ".join(sentence)
+      return ' '.join(sentence)
     return sentence
 
 
@@ -203,7 +203,7 @@ def write_vocab(vocab, path):
   print('Writing vocab of size %d to %s' % (len(vocab), path))
   with open(path, 'w') as f:
     for word in vocab:
-      f.write("%s\n" % word)
+      f.write('%s\n' % word)
 
 
 def read_vocab(path, language):
@@ -303,12 +303,12 @@ def spatial_feature_from_bbox(bboxes, im_h, im_w):
 
 
 def run(arg_parser, entry_function):
-  arg_parser.add_argument("--pdb", action='store_true')
-  arg_parser.add_argument("--ipdb", action='store_true')
-  arg_parser.add_argument("--no_cuda", action='store_true')
-  arg_parser.add_argument("--experiment_name", type=str, default='debug')
-  arg_parser.add_argument("--batch_size", type=int, default=64)
-  arg_parser.add_argument("--save_args", action='store_false')
+  arg_parser.add_argument('--pdb', action='store_true')
+  arg_parser.add_argument('--ipdb', action='store_true')
+  arg_parser.add_argument('--no_cuda', action='store_true')
+  arg_parser.add_argument('--experiment_name', type=str, default='debug')
+  arg_parser.add_argument('--batch_size', type=int, default=64)
+  arg_parser.add_argument('--save_args', action='store_false')
 
   args = arg_parser.parse_args()
   args.image_list_file = os.path.join(args.refer360_root, 'imagelist.txt')
@@ -433,7 +433,7 @@ class PriorityQueue:
     if self.locked:
       return 0, self.priority[0], self.queue[0]
     if len(self.pri) == 0:
-      print("PriorityQueue error: pop from an empty queue")
+      print('PriorityQueue error: pop from an empty queue')
       import pdb
       pdb.set_trace()
     p, idx = heapq.heappop(self.pri)
@@ -472,14 +472,14 @@ def get_confusion_matrix_image(labels, matrix, title='Title', tight=False, cmap=
   ax.set_yticklabels(labels_y)
 
   # Rotate the tick labels and set their alignment.
-  plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
-           rotation_mode="anchor")
+  plt.setp(ax.get_xticklabels(), rotation=45, ha='right',
+           rotation_mode='anchor')
 
   # Loop over data dimensions and create text annotations.
   for i in range(matrix.shape[0]):
     for j in range(matrix.shape[1]):
       _ = ax.text(j, i, '{:0.2f}'.format(matrix[i, j]),
-                  ha="center", va="center", color="w", fontsize=8)
+                  ha='center', va='center', color='w', fontsize=8)
   ax.set_title(title)
   if tight:
     fig.tight_layout()
@@ -503,8 +503,8 @@ def get_bar_image(x_pos, x_labels, means, errors,
   ax.set_xticks(x_pos)
   ax.set_xticklabels(x_labels)
   ax.yaxis.grid(True)
-  plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
-           rotation_mode="anchor", fontsize=9)
+  plt.setp(ax.get_xticklabels(), rotation=45, ha='right',
+           rotation_mode='anchor', fontsize=9)
 
   ax.set_title(title)
   if tight:

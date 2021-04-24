@@ -11,6 +11,7 @@ pp = pprint.PrettyPrinter(indent=4)  # NoQA
 from pprint import pprint
 
 from refer360_env import Refer360Batch, Refer360ImageFeatures, load_datasets
+from refer360_env import make_sim
 import utils
 
 from follower import BaseAgent
@@ -67,11 +68,6 @@ class Refer360Evaluation(object):
     self.scans = set(self.scans)
     self.instr_ids = set(self.instr_ids)
 
-    # self.sim = make_sim(cache_root,
-    #                Refer360ImageFeatures.IMAGE_W,
-    #                Refer360ImageFeatures.IMAGE_H,
-    #                Refer360ImageFeatures.VFOV)
-    # self.sim.load_maps()
     self.nodes = self.sim.nodes
     self.distances = self.sim.distances
     self.error_margin = error_margin*270.0  # error_margin * max FOV distance
@@ -222,7 +218,11 @@ class Refer360Evaluation(object):
         img_scene = img_path.split('/')[4]
         traj_length = len(
             self.gt[result['instr_id'].split('_')[0]]['gt_actions_path'])
-        inst_length = result['instr_encoding'].shape[0]
+
+        if 'instr_encoding' in result:
+          inst_length = result['instr_encoding'].shape[0]
+        else:
+          inst_length = 0
 
         self.scores['nav_error'].append(eval_result.nav_error)
         self.scores['oracle_error'].append(eval_result.oracle_error)
@@ -413,7 +413,13 @@ class Refer360Evaluation(object):
 def eval_simple_agents(args):
   ''' Run simple baselines on each split. '''
   img_features = Refer360ImageFeatures.from_args(args)
-#  for split in ['val_seen', 'val_unseen',]:
+
+  sim = make_sim(args.cache_root,
+                 Refer360ImageFeatures.IMAGE_W,
+                 Refer360ImageFeatures.IMAGE_H,
+                 Refer360ImageFeatures.VFOV)
+  sim.load_maps()
+
   for split in ['val_seen',
                 'val_unseen',
                 'test_unseen',
@@ -422,7 +428,8 @@ def eval_simple_agents(args):
                         splits=[split],
                         args=args)
     ev = Refer360Evaluation([split],
-                            args=args)
+                            args=args,
+                            sim=sim)
 
     for agent_type in ['Stop', 'Shortest', 'Random']:
       outfile = '%s%s_%s_agent.json' % (
@@ -442,23 +449,40 @@ def eval_seq2seq(args):
       args.RESULT_DIR + 'seq2seq_teacher_imagenet_%s_iter_5000.json',
       args.RESULT_DIR + 'seq2seq_sample_imagenet_%s_iter_20000.json'
   ]
+  sim = make_sim(args.cache_root,
+                 Refer360ImageFeatures.IMAGE_W,
+                 Refer360ImageFeatures.IMAGE_H,
+                 Refer360ImageFeatures.VFOV)
+  sim.load_maps()
+
   for outfile in outfiles:
     for split in ['val_seen', 'val_unseen']:
-      ev = Refer360Evaluation([split])
+      ev = Refer360Evaluation([split],
+                              args=args,
+                              sim=sim)
       score_summary, _, _ = ev.score_file(outfile % split)
       print('\n%s' % outfile)
       pp.pprint(score_summary)
 
 
-def eval_outfiles(outfolder):
+def eval_outfiles(args):
+  outfolder = args.results_path
   splits = ['val_seen', 'val_unseen']
+  sim = make_sim(args.cache_root,
+                 Refer360ImageFeatures.IMAGE_W,
+                 Refer360ImageFeatures.IMAGE_H,
+                 Refer360ImageFeatures.VFOV)
+  sim.load_maps()
+
   for _f in os.listdir(outfolder):
     outfile = os.path.join(outfolder, _f)
     _splits = []
     for s in splits:
       if s in outfile:
         _splits.append(s)
-    ev = Refer360Evaluation(_splits)
+    ev = Refer360Evaluation(_splits,
+                            args=args,
+                            sim=sim)
     score_summary, _, _ = ev.score_file(outfile)
     print('\n', outfile)
     pp.pprint(score_summary)
@@ -466,5 +490,10 @@ def eval_outfiles(outfolder):
 
 if __name__ == '__main__':
   from train import make_arg_parser
-  utils.run(make_arg_parser(), eval_simple_agents)
-  # eval_seq2seq(make_arg_parser())
+  # TODO: take function to run as argument
+  parser = make_arg_parser()
+  parser.add_argument('--results_path', type=str,
+                      default='')
+
+  utils.run(parser, eval_outfiles)
+  # utils.run(make_arg_parser(), eval_simple_agents)

@@ -385,7 +385,6 @@ def train_setup(args, train_splits=['train']):
   if args.debug:
     args.log_every = 3
     args.n_iters = 2
-    train_splits = val_splits = ['val_seen']
     args.image_feature_type = ['none']
     args.refer360_image_feature_type = ['none']
 
@@ -451,22 +450,9 @@ def train_val(args):
         args.n_iters, val_envs=val_envs)
 
 # TODO
-# Test set prediction will be handled separately
 # def test_submission(args):
 #     ''' Train on combined training and validation sets, and generate test
 #     submission. '''
-#     agent, train_env, test_envs = test_setup(args)
-#     train(args, train_env, agent)
-#
-#     test_env = test_envs['test']
-#     agent.env = test_env
-#
-#     agent.results_path = '%s/%s_%s_iter_%d.json' % (
-#         args.RESULT_DIR, get_model_prefix(args, train_env.image_features_list),
-#         'test', args.n_iters)
-#     agent.test(use_dropout=False, feedback='argmax')
-#     if not args.no_save:
-#         agent.write_results()
 
 
 def make_arg_parser():
@@ -479,12 +465,12 @@ def make_arg_parser():
   parser.add_argument('--load_follower', type=str, default='')
   parser.add_argument('--load_traj_encoder', type=str, default='')
   parser.add_argument('--feedback_method',
-                      choices=['sample', 'teacher', 'sample1step', 'sample2step', 'sample3step', 'teacher+sample', 'recover', 'argmax'], default='sample')
+                      choices=['sample', 'teacher', 'sample1step', 'sample2step', 'sample3step', 'teacher+sample', 'recover', 'argmax'], default='teacher')
   parser.add_argument('--debug', action='store_true')
 
   parser.add_argument('--bidirectional', action='store_true')
   parser.add_argument('--hidden_size', type=int, default=512)
-  parser.add_argument('--encoder_num_layers', type=int, default=1)
+  parser.add_argument('--encoder_num_layers', type=int, default=2)
   parser.add_argument('--learning_rate', type=float, default=0.0001)
   parser.add_argument('--clip_rate', type=float, default=0.)
   parser.add_argument('--weight_decay', type=float, default=0.0005)
@@ -537,9 +523,6 @@ def make_arg_parser():
   parser.add_argument('--angle_inc', type=int, default=30)
 
   parser.add_argument('--verbose', action='store_true')
-
-  parser.add_argument('--results_folder', type=str,
-                      default='')
 
   return parser
 
