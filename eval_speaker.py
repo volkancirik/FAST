@@ -22,9 +22,6 @@ class SpeakerEvaluation(object):
 
     prefix = args.prefix
     refer360_root = args.refer360_root
-    cache_root = args.cache_root
-    error_margin = args.error_margin
-
 
     self.splits = splits
     self.gt = {}
@@ -84,7 +81,7 @@ class SpeakerEvaluation(object):
           results_by_base_id[base_id] = result
 
     if mismatches:
-      print("mismatching outputs for sentences:")
+      print('mismatching outputs for sentences:')
       for old_pred, new_pred in mismatches:
         print(old_pred)
         print(new_pred)
@@ -92,7 +89,7 @@ class SpeakerEvaluation(object):
 
     assert len(instr_ids) == 0, \
         'Missing %d of %d instruction ids from %s' % (
-        len(instr_ids), len(self.instr_ids), ",".join(self.splits))
+        len(instr_ids), len(self.instr_ids), ','.join(self.splits))
 
     all_refs = []
     all_hyps = []
@@ -127,12 +124,12 @@ class SpeakerEvaluation(object):
 
       if verbose and instr_count % 100 == 0:
         for i, ref in enumerate(tokenized_refs):
-          print("ref {}:\t{}".format(i, ' '.join(ref)))
-        print("pred  :\t{}".format(' '.join(tokenized_hyp)))
+          print('ref {}:\t{}'.format(i, ' '.join(ref)))
+        print('pred  :\t{}'.format(' '.join(tokenized_hyp)))
         print()
 
     if skip_count != 0:
-      print("skipped {} instructions without {} refs: {}".format(
+      print('skipped {} instructions without {} refs: {}'.format(
           skip_count, self.instructions_per_path, ' '.join(
               str(i) for i in skipped_refs)))
 

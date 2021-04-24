@@ -19,9 +19,9 @@ import train
 from collections import namedtuple
 
 EvalResult = namedtuple(
-    "EvalResult", "nav_error, oracle_error, trajectory_steps, "
-    "trajectory_length, success, oracle_success, spl, "
-    "cls, ndtw")
+    'EvalResult', 'nav_error, oracle_error, trajectory_steps, '
+    'trajectory_length, success, oracle_success, spl, '
+    'cls, ndtw')
 
 
 class Evaluation(object):
@@ -219,7 +219,7 @@ class Evaluation(object):
 
     assert len(instr_ids) == 0, \
         'Missing %d of %d instruction ids from %s' % (
-            len(instr_ids), len(self.instr_ids), ",".join(self.splits))
+            len(instr_ids), len(self.instr_ids), ','.join(self.splits))
 
     assert len(self.scores['nav_errors']) == len(self.instr_ids)
     score_summary = {
@@ -227,7 +227,7 @@ class Evaluation(object):
         'oracle_error': np.average(self.scores['oracle_errors']),
         'steps': np.average(self.scores['trajectory_steps']),
         'lengths': np.average(self.scores['trajectory_lengths']),
-        'success_rate': float(
+        'success': float(
             sum(self.scores['success']) / len(self.scores['success'])),
         'oracle_rate': float(sum(self.scores['oracle_success'])
                              / len(self.scores['oracle_success'])),
@@ -241,8 +241,8 @@ class Evaluation(object):
 
     num_successes = len(
         [i for i in self.scores['nav_errors'] if i < self.error_margin])
-    # score_summary['success_rate'] = float(num_successes)/float(len(self.scores['nav_errors']))  # NoQA
-    assert float(num_successes) / float(len(self.scores['nav_errors'])) == score_summary['success_rate']  # NoQA
+    # score_summary['success'] = float(num_successes)/float(len(self.scores['nav_errors']))  # NoQA
+    assert float(num_successes) / float(len(self.scores['nav_errors'])) == score_summary['success']  # NoQA
     oracle_successes = len(
         [i for i in self.scores['oracle_errors'] if i < self.error_margin])
     assert float(oracle_successes) / float(len(self.scores['oracle_errors'])) == score_summary['oracle_rate']  # NoQA
@@ -293,7 +293,7 @@ class Evaluation(object):
       if _diff == plen or _diff == glen:
         break
     if _diff == plen and _diff == glen:
-      _diff = -1  # mark "no deviation"
+      _diff = -1  # mark 'no deviation'
     results['ontrack'] = _diff
 
     # 2. Percentage starts deviation
@@ -403,5 +403,3 @@ if __name__ == '__main__':
   # TODO: take function to run as argument
   utils.run(make_arg_parser(), eval_outfiles)
   #utils.run(make_arg_parser(), eval_simple_agents)
-
-  # eval_seq2seq()

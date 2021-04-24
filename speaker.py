@@ -14,7 +14,7 @@ from utils import vocab_pad_idx, vocab_bos_idx, vocab_eos_idx, flatten, try_cuda
 from follower import batch_instructions_from_encoded
 import pdb
 InferenceState = namedtuple(
-    "InferenceState", "prev_inference_state, flat_index, last_word, word_count, score, last_alpha")
+    'InferenceState', 'prev_inference_state, flat_index, last_word, word_count, score, last_alpha')
 
 
 def backchain_inference_states(last_inference_state):
@@ -158,7 +158,7 @@ class Seq2SeqSpeaker(object):
     assert all(outputs)
 
     # for i in range(batch_size):
-    #     assert outputs[i]['instr_id'] != '1008_0', "found example at index {}".format(i)
+    #     assert outputs[i]['instr_id'] != '1008_0', 'found example at index {}'.format(i)
 
     # Do a sequence rollout and calculate the loss
     loss = 0
@@ -202,7 +202,7 @@ class Seq2SeqSpeaker(object):
         if word_idx == vocab_eos_idx:
           ended[perm_index] = True
 
-      # print("t: %s\tstate: %s\taction: %s\tscore: %s" % (t, world_states[0], a_t.data[0], sequence_scores[0]))
+      # print('t: %s\tstate: %s\taction: %s\tscore: %s' % (t, world_states[0], a_t.data[0], sequence_scores[0]))
 
       # Early exit if all ended
       if ended.all():
@@ -368,7 +368,7 @@ class Seq2SeqSpeaker(object):
       #         assert rollout_traj['instr_id'] == beam_trajs[0]['instr_id']
       #         assert rollout_traj['word_indices'] == beam_trajs[0]['word_indices']
       #         assert np.allclose(rollout_traj['score'], beam_trajs[0]['score'])
-      #     print("passed check: beam_search with beam_size=1")
+      #     print('passed check: beam_search with beam_size=1')
       #
       #     self.env.set_beam_size(10)
       #     beam_results = self.beam_search(10, path_obs, path_actions)
@@ -379,7 +379,7 @@ class Seq2SeqSpeaker(object):
       #         beam_score = beam_trajs[0]['score']
       #         beam_10_scores.append(beam_score)
       #         # assert rollout_score <= beam_score
-      # # print("passed check: beam_search with beam_size=10")
+      # # print('passed check: beam_search with beam_size=10')
 
       for result in rollout_results:
         if result['instr_id'] in self.results:
@@ -389,8 +389,8 @@ class Seq2SeqSpeaker(object):
       if looped:
         break
     # if self.feedback == 'argmax':
-    #     print("avg rollout score: ", np.mean(rollout_scores))
-    #     print("avg beam 10 score: ", np.mean(beam_10_scores))
+    #     print('avg rollout score: ', np.mean(rollout_scores))
+    #     print('avg beam 10 score: ', np.mean(beam_10_scores))
     return self.results
 
   def train(self, encoder_optimizer, decoder_optimizer, n_iters, feedback='teacher'):
@@ -415,7 +415,7 @@ class Seq2SeqSpeaker(object):
       decoder_optimizer.step()
 
   def _encoder_and_decoder_paths(self, base_path):
-    return base_path + "_enc", base_path + "_dec"
+    return base_path + '_enc', base_path + '_dec'
 
   def save(self, path):
     ''' Snapshot models '''

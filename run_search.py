@@ -49,7 +49,7 @@ def _train(args, train_env, agent, optimizers,
   data_log = defaultdict(list)
   start = time.time()
 
-  split_string = "-".join(train_env.splits)
+  split_string = '-'.join(train_env.splits)
 
   def make_path(n_iter):
     return os.path.join(
@@ -112,17 +112,17 @@ def _train(args, train_env, agent, optimizers,
 
       for metric, val in sorted(score_summary.items()):
         data_log['%s %s' % (env_name, metric)].append(val)
-        if metric in ['success_rate']:
+        if metric in ['success']:
           loss_str += ', %s: %.3f' % (metric, val)
 
           key = (env_name, metric)
           if key not in best_metrics or best_metrics[key] < val:
             best_metrics[key] = val
             if not args.no_save:
-              model_path = make_path(iter) + "_%s-%s=%.3f" % (
+              model_path = make_path(iter) + '_%s-%s=%.3f' % (
                   env_name, metric, val)
               save_log.append(
-                  "new best, saved model to %s" % model_path)
+                  'new best, saved model to %s' % model_path)
               agent.save(model_path)
               if key in last_model_saved:
                 for old_model_path in last_model_saved[key]:
@@ -185,7 +185,7 @@ def sweep_gamma(args, agent, val_envs, gamma_space):
   data_log = defaultdict(list)
   start = time.time()
 
-  split_string = "-".join(list(val_envs.keys()))
+  split_string = '-'.join(list(val_envs.keys()))
 
   def make_path(gamma):
     return os.path.join(
@@ -202,7 +202,7 @@ def sweep_gamma(args, agent, val_envs, gamma_space):
     save_log = []
     # Run validation
     for env_name, (val_env, evaluator) in sorted(val_envs.items()):
-      print("evaluating on {}".format(env_name))
+      print('evaluating on {}'.format(env_name))
       agent.env = val_env
       if hasattr(agent, 'speaker') and agent.speaker:
         agent.speaker.env = val_env
@@ -219,12 +219,12 @@ def sweep_gamma(args, agent, val_envs, gamma_space):
 
       for metric, val in sorted(score_summary.items()):
         data_log['%s %s' % (env_name, metric)].append(val)
-        if metric in ['success_rate']:
+        if metric in ['success']:
           loss_str += ', %s: %.3f' % (metric, val)
 
           key = (env_name, metric)
           if key not in best_metrics or best_metrics[key] < val:
-            save_log.append("new best _%s-%s=%.3f" % (
+            save_log.append('new best _%s-%s=%.3f' % (
                 env_name, metric, val))
 
     idx = idx+1
@@ -250,7 +250,7 @@ def eval_gamma(args, agent, train_env, val_envs):
 
 def run_search(args, agent, train_env, val_envs):
   for env_name, (val_env, evaluator) in sorted(val_envs.items()):
-    print("evaluating on {}".format(env_name))
+    print('evaluating on {}'.format(env_name))
     agent.env = val_env
     if hasattr(agent, 'speaker') and agent.speaker:
       agent.speaker.env = val_env
@@ -294,7 +294,7 @@ def cache(args, agent, train_env, val_envs):
     agent.env = env
     if agent.speaker:
       agent.speaker.env = env
-    print("Generating candidates for", env_name)
+    print('Generating candidates for', env_name)
     agent.cache_search_candidates()
     if not args.no_save:
       with open('cache_{}{}{}{}.json'.format(env_name, '_debug' if args.debug else '', args.max_episode_len, args.early_stop), 'w') as outfile:
@@ -308,21 +308,21 @@ def cache(args, agent, train_env, val_envs):
 
 def make_arg_parser():
   parser = train.make_arg_parser()
-#  parser.add_argument("--max_episode_len", type=int, default=40)
-  parser.add_argument("--gamma", type=float, default=0.21)
-  parser.add_argument("--mean", action='store_true')
-  parser.add_argument("--logit", action='store_true')
-  parser.add_argument("--early_stop", action='store_true')
-  parser.add_argument("--revisit", action='store_true')
-  parser.add_argument("--inject_stop", action='store_true')
-  parser.add_argument("--load_reranker", type=str, default='')
-  parser.add_argument("--K", type=int, default=20)
-  parser.add_argument("--beam", action='store_true')
-  parser.add_argument("--load_speaker", type=str,
+#  parser.add_argument('--max_episode_len', type=int, default=40)
+  parser.add_argument('--gamma', type=float, default=0.21)
+  parser.add_argument('--mean', action='store_true')
+  parser.add_argument('--logit', action='store_true')
+  parser.add_argument('--early_stop', action='store_true')
+  parser.add_argument('--revisit', action='store_true')
+  parser.add_argument('--inject_stop', action='store_true')
+  parser.add_argument('--load_reranker', type=str, default='')
+  parser.add_argument('--K', type=int, default=20)
+  parser.add_argument('--beam', action='store_true')
+  parser.add_argument('--load_speaker', type=str,
                       default='')
 
   parser.add_argument(
-      "--job", choices=['search', 'sweep', 'train', 'cache', 'test'], default='search')
+      '--job', choices=['search', 'sweep', 'train', 'cache', 'test'], default='search')
   return parser
 
 
@@ -351,7 +351,7 @@ def test(args, agent, val_envs):
     print('results_path:', agent.results_path)
     agent.test(use_dropout=False, feedback='argmax')
     agent.write_test_results()
-  print("finished testing. recommended to save the trajectory again")
+  print('finished testing. recommended to save the trajectory again')
 
 
 def main(args):
@@ -425,9 +425,9 @@ def main(args):
   elif args.job == 'test':
     test(args, agent, val_envs)
   else:
-    print("no job specified")
+    print('no job specified')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   torch.backends.cudnn.enabled = False
   utils.run(make_arg_parser(), main)

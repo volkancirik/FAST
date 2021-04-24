@@ -39,14 +39,14 @@ DIR2IDX = {
 
 def build_viewpoint_loc_embedding(viewIndex,
                                   angle_inc=15.0):
-  """
+  '''
   Position embedding:
   heading 64D + elevation 64D
   1) heading: [sin(heading) for _ in range(1, 9)] +
               [cos(heading) for _ in range(1, 9)]
   2) elevation: [sin(elevation) for _ in range(1, 9)] +
                 [cos(elevation) for _ in range(1, 9)]
-  """
+  '''
   embedding = np.zeros((9, 128), np.float32)
 
   for absViewIndex in range(9):
@@ -173,28 +173,28 @@ class Refer360ImageFeatures(object):
                                        butd_filename=args.butd_filename,
                                        n_fovs=n_fovs,))
 
-      assert len(feats) >= 1
+      assert len(feats) >= 1, 'len(feats) >= 1, {} >= 0'.format(len(feats))
     return feats
 
   @staticmethod
   def add_args(argument_parser):
-    argument_parser.add_argument("--refer360_image_feature_type", nargs="+",
+    argument_parser.add_argument('--refer360_image_feature_type', nargs='+',
                                  choices=['none', 'random',
                                           'mean_pooled', 'butd'],
                                  default=['mean_pooled'])
-    argument_parser.add_argument("--refer360_image_feature_model",
+    argument_parser.add_argument('--refer360_image_feature_model',
                                  choices=['resnet', 'clip'],
                                  default='resnet')
 
   def get_name(self):
-    raise NotImplementedError("base class does not have get_name")
+    raise NotImplementedError('base class does not have get_name')
 
   def batch_features(self, feature_list):
     features = np.stack(feature_list)
     return try_cuda(Variable(torch.from_numpy(features), requires_grad=False))
 
   def get_features(self, state):
-    raise NotImplementedError("base class does not have get_features")
+    raise NotImplementedError('base class does not have get_features')
 
 
 class RandImageFeatures(Refer360ImageFeatures):
@@ -209,7 +209,7 @@ class RandImageFeatures(Refer360ImageFeatures):
     return self.features
 
   def get_name(self):
-    return "random"
+    return 'random'
 
 
 class NoImageFeatures(Refer360ImageFeatures):
@@ -224,7 +224,7 @@ class NoImageFeatures(Refer360ImageFeatures):
     return self.features
 
   def get_name(self):
-    return "none"
+    return 'none'
 
 
 MODEL2PREFIX = {'resnet': '',
@@ -285,7 +285,7 @@ class MeanPooledImageFeatures(Refer360ImageFeatures):
     return self.features[long_id]
 
   def get_name(self):
-    name = "mean_pooled"+self.feature_model
+    name = 'mean_pooled'+self.feature_model
     return name
 
 
@@ -300,13 +300,13 @@ class BUTDImageFeatures(Refer360ImageFeatures):
     self.feature_dim = 2048
     self.n_fovs = n_fovs
 
-    FIELDNAMES = ["img_id", "img_h", "img_w", "objects_id", "objects_conf",
-                  "attrs_id", "attrs_conf", "num_boxes", "boxes", "features"]
+    FIELDNAMES = ['img_id', 'img_h', 'img_w', 'objects_id', 'objects_conf',
+                  'attrs_id', 'attrs_conf', 'num_boxes', 'boxes', 'features']
     self.features = {}
 
     fov2feat = {}
     with open(butd_filename) as f:
-      reader = csv.DictReader(f, FIELDNAMES, delimiter="\t")
+      reader = csv.DictReader(f, FIELDNAMES, delimiter='\t')
       for i, item in enumerate(reader):
 
         for key in ['img_h', 'img_w', 'num_boxes']:
@@ -366,7 +366,7 @@ class BUTDImageFeatures(Refer360ImageFeatures):
     return self.features[long_id]
 
   def get_name(self):
-    name = "_with_butd"
+    name = '_with_butd'
     return name
 
 
@@ -473,7 +473,7 @@ def load_datasets(splits,
     if use_intermediate and split_name == 'train':
       for kk, refexp in enumerate(datum['refexps']):
         new_datum = datum.copy()
-        instructions = " ".join(refexp)
+        instructions = ' '.join(refexp)
         new_datum['instructions'] = [instructions]
         new_datum['path'] = datum['intermediate_paths'][kk]
         new_datum['gt_actions_path'] = datum['intermediate_paths'][kk]
@@ -484,7 +484,7 @@ def load_datasets(splits,
 
         converted.append(new_datum)
     else:
-      instructions = " ".join([" ".join(refexp)
+      instructions = ' '.join([' '.join(refexp)
                                for refexp in datum['refexps']]).replace('.', ' . ').replace(',', ' , ').replace(';', ' ; ')
       datum['instructions'] = [instructions]
       datum['gt_actions_path'] = datum['path']
@@ -516,7 +516,7 @@ class Refer360Batch(R2RBatch):
     seed = args.seed
     beam_size = args.beam_size
     language = args.language
-    refer360_root = args.refer360_root
+    refer360_data = args.refer360_data
     cache_root = args.cache_root
     use_intermediate = args.use_intermediate
     use_gt_actions = args.use_gt_actions
@@ -536,7 +536,7 @@ class Refer360Batch(R2RBatch):
 
     print('loading splits:', splits)
     refer360_data = load_datasets(splits,
-                                  root=refer360_root,
+                                  root=refer360_data,
                                   use_intermediate=use_intermediate)
 
     total_unk, total_found, all_unk = 0, 0, set()
@@ -586,7 +586,7 @@ class Refer360Batch(R2RBatch):
                        cache_root=cache_root)
     self.print_progress = False
     print('Refer360Batch loaded with %d instructions, using splits: %s' %
-          (len(self.data), ",".join(splits)))
+          (len(self.data), ','.join(splits)))
     self.batch = self.data
     self.notTest = ('test' not in splits)
     self.paths = self.env.sims[0][0].paths
@@ -622,7 +622,7 @@ class Refer360Batch(R2RBatch):
     '''
     if len(gt_path) == 1:
       return 0, gt_path
-    assert state.viewpointId == gt_path[0], "state.viewpointId != gt_path[0] {} != {} {} {} {}".format(
+    assert state.viewpointId == gt_path[0], 'state.viewpointId != gt_path[0] {} != {} {} {} {}'.format(
         state.viewpointId, gt_path[0], gt_path, adj_loc_list, state)
     nextViewpointId = gt_path[1]
     for n_a, loc_attr in enumerate(adj_loc_list):

@@ -3,27 +3,27 @@
 import os
 import json
 from collections import defaultdict
-import networkx as nx
+
 import numpy as np
 import random
 import pprint
 pp = pprint.PrettyPrinter(indent=4)  # NoQA
 from pprint import pprint
 
-from refer360_env import Refer360Batch, Refer360ImageFeatures, load_datasets, make_sim
+from refer360_env import Refer360Batch, Refer360ImageFeatures, load_datasets
 import utils
 
 from follower import BaseAgent
-import train
+#import train
 
 from collections import namedtuple
 
 
 EvalResult = namedtuple(
-    "EvalResult", "nav_error, oracle_error, trajectory_steps, "
-    "trajectory_length, success, oracle_success, spl, "
-    "fov_accuracy, acc_20, acc_40, acc_60,"
-    "cls, ndtw")
+    'EvalResult', 'nav_error, oracle_error, trajectory_steps, '
+    'trajectory_length, success, oracle_success, spl, '
+    'fov_accuracy, acc_20, acc_40, acc_60,'
+    'cls, ndtw')
 
 
 class Refer360Evaluation(object):
@@ -35,8 +35,8 @@ class Refer360Evaluation(object):
                args=None):
 
     prefix = args.prefix
-    refer360_root = args.refer360_root
-    cache_root = args.cache_root
+    refer360_data = args.refer360_data
+
     error_margin = args.error_margin
     self.sim = args.sim
 
@@ -46,7 +46,7 @@ class Refer360Evaluation(object):
     self.scans = []
     self.instructions = {}
     counts = defaultdict(int)
-    refer360_data = load_datasets(splits, root=refer360_root)
+    refer360_data = load_datasets(splits, root=refer360_data)
     for item in refer360_data:
       path_id = item['path_id']
       count = counts[path_id]
@@ -267,7 +267,7 @@ class Refer360Evaluation(object):
 
     assert len(instr_ids) == 0, \
         'Missing %d of %d instruction ids from %s' % (
-            len(instr_ids), len(self.instr_ids), ",".join(self.splits))
+            len(instr_ids), len(self.instr_ids), ','.join(self.splits))
 
     assert len(self.scores['nav_error']) == len(self.instr_ids)
     score_summary = {
@@ -275,7 +275,7 @@ class Refer360Evaluation(object):
         'oracle_error': np.average(self.scores['oracle_error']),
         'steps': np.average(self.scores['trajectory_steps']),
         'lengths': np.average(self.scores['trajectory_length']),
-        'success_rate': float(
+        'success': float(
             sum(self.scores['success']) / len(self.scores['success'])),
         'oracle_rate': float(sum(self.scores['oracle_success'])
                              / len(self.scores['oracle_success'])),
@@ -297,8 +297,8 @@ class Refer360Evaluation(object):
 
     num_successes = len(
         [i for i in self.scores['nav_error'] if i < self.error_margin])
-    # score_summary['success_rate'] = float(num_successes)/float(len(self.scores['nav_error']))  # NoQA
-    assert float(num_successes) / float(len(self.scores['nav_error'])) == score_summary['success_rate']  # NoQA
+    # score_summary['success'] = float(num_successes)/float(len(self.scores['nav_error']))  # NoQA
+    assert float(num_successes) / float(len(self.scores['nav_error'])) == score_summary['success']  # NoQA
     oracle_successes = len(
         [i for i in self.scores['oracle_error'] if i < self.error_margin])
     assert float(oracle_successes) / float(len(self.scores['oracle_error'])) == score_summary['oracle_rate']  # NoQA
@@ -355,7 +355,7 @@ class Refer360Evaluation(object):
       if _diff == plen or _diff == glen:
         break
     if _diff == plen and _diff == glen:
-      _diff = -1  # mark "no deviation"
+      _diff = -1  # mark 'no deviation'
     results['ontrack'] = _diff
 
     # 2. Percentage starts deviation

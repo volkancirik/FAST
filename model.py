@@ -345,7 +345,8 @@ class BottomUpImageAttention(nn.Module):
     x = x_context * x_feature
     x = x / torch.norm(x, p=2, dim=2, keepdim=True)
     x = self.fc2(x).squeeze(-1)  # batch_size x max_num_detections
-    x.data.masked_fill_(bottom_up_features.no_object_mask.bool(), -float("inf"))
+    x.data.masked_fill_(
+        bottom_up_features.no_object_mask.bool(), -float('inf'))
     # batch_size x 1 x max_num_detections
     attention = F.softmax(x, 1).unsqueeze(1)
     # batch_size x feat_size
@@ -511,7 +512,7 @@ class AttnDecoderLSTM(nn.Module):
                visual_context_size=2048+128,
                image_attention_layers=None,
                num_head=8,
-               max_len =-1):
+               max_len=-1):
     super(AttnDecoderLSTM, self).__init__()
     self.embedding_size = embedding_size
     self.feature_size = feature_size

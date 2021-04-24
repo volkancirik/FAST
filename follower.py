@@ -19,12 +19,12 @@ from utils import PriorityQueue
 from running_mean_std import RunningMean
 
 InferenceState = namedtuple(
-    "InferenceState", "prev_inference_state, world_state, observation, flat_index, last_action, last_action_embedding, action_count, score, h_t, c_t, last_alpha")
+    'InferenceState', 'prev_inference_state, world_state, observation, flat_index, last_action, last_action_embedding, action_count, score, h_t, c_t, last_alpha')
 SearchState = namedtuple(
-    "SearchState", "flogit,flogp, world_state, observation, action, action_embedding, action_count, h_t,c_t,father")  # flat_index,
+    'SearchState', 'flogit,flogp, world_state, observation, action, action_embedding, action_count, h_t,c_t,father')  # flat_index,
 CandidateState = namedtuple(
-    "CandidateState", "flogit,flogp,world_states,actions,pm,speaker,scorer")  # flat_index,
-Cons = namedtuple("Cons", "first, rest")
+    'CandidateState', 'flogit,flogp,world_states,actions,pm,speaker,scorer')  # flat_index,
+Cons = namedtuple('Cons', 'first, rest')
 
 
 def cons_to_list(cons):
@@ -80,7 +80,7 @@ def least_common_viewpoint_path(inf_state_a, inf_state_b):
       return path_from_a + path_to_b[1:]
     a = a.prev_inference_state
     path_from_a.append(a)
-  raise AssertionError("no common ancestor found")
+  raise AssertionError('no common ancestor found')
 
 
 def batch_instructions_from_encoded(encoded_instructions, max_length, reverse=False, sort=False, tok=None, addEos=True):
@@ -190,7 +190,7 @@ class BaseAgent(object):
 
   @staticmethod
   def get_agent(name):
-    return globals()[name+"Agent"]
+    return globals()[name+'Agent']
 
   def test(self):
     self.env.reset_epoch()
@@ -216,8 +216,8 @@ class BaseAgent(object):
         if looped:
           break
     # if self.feedback == 'argmax':
-    #     print("avg rollout score: ", np.mean(rollout_scores))
-    #     print("avg beam 10 score: ", np.mean(beam_10_scores))
+    #     print('avg rollout score: ', np.mean(rollout_scores))
+    #     print('avg beam 10 score: ', np.mean(beam_10_scores))
     return self.results
 
 
@@ -686,7 +686,7 @@ class Seq2SeqAgent(BaseAgent):
 
       world_states = self.env.step(world_states, env_action, obs)
       obs = self.env.observe(world_states)
-      # print("t: %s\tstate: %s\taction: %s\tscore: %s" % (t, world_states[0], a_t.item(), sequence_scores[0]))
+      # print('t: %s\tstate: %s\taction: %s\tscore: %s' % (t, world_states[0], a_t.item(), sequence_scores[0]))
 
       # Save trajectory output
       for i, ob in enumerate(obs):
@@ -1018,8 +1018,8 @@ class Seq2SeqAgent(BaseAgent):
     for idx in range(batch_size):
       instr_id = traj[idx]['instr_id']
       if ending_queue[idx].size() == 0:
-        # print("Warning: some instr does not have ending, ",
-        #        "this can be a desired behavior though")
+        # print('Warning: some instr does not have ending, ',
+        #        'this can be a desired behavior though')
         self.clean_results[instr_id] = {
             'instr_id': traj[idx]['instr_id'],
             'trajectory': traj[idx]['trajectory'],
@@ -1454,7 +1454,7 @@ class Seq2SeqAgent(BaseAgent):
                                       all_successors, successor_world_states, successor_obs, nested=True)
 
       # if all_successors[0]:
-      #     print("t: %s\tstate: %s\taction: %s\tscore: %s" % (t, all_successors[0][0].world_state, all_successors[0][0].last_action, all_successors[0][0].score))
+      #     print('t: %s\tstate: %s\taction: %s\tscore: %s' % (t, all_successors[0][0].world_state, all_successors[0][0].last_action, all_successors[0][0].score))
 
       for beam_index, successors in enumerate(all_successors):
         new_beam = []
@@ -1678,7 +1678,7 @@ class Seq2SeqAgent(BaseAgent):
                                       all_successors, successor_world_states, nested=True)
 
       # if all_successors[0]:
-      #     print("t: %s\tstate: %s\taction: %s\tscore: %s" % (t, all_successors[0][0].world_state, all_successors[0][0].last_action, all_successors[0][0].score))
+      #     print('t: %s\tstate: %s\taction: %s\tscore: %s' % (t, all_successors[0][0].world_state, all_successors[0][0].last_action, all_successors[0][0].score))
 
       assert len(all_successors) == len(state_cache)
 
@@ -1784,7 +1784,7 @@ class Seq2SeqAgent(BaseAgent):
         })
       trajs.append(this_trajs)
     # completed_list: list of lists of final inference states corresponding to the candidates, one list per instance
-    # traversed_lists: list of "physical states" that the robot has explored, one per instance
+    # traversed_lists: list of 'physical states' that the robot has explored, one per instance
     return trajs, completed_list, traversed_lists
 
   def set_beam_size(self, beam_size):
@@ -1852,7 +1852,7 @@ class Seq2SeqAgent(BaseAgent):
         opt.step()
 
   def _encoder_and_decoder_paths(self, base_path):
-    return base_path + "_enc", base_path + "_dec"
+    return base_path + '_enc', base_path + '_dec'
 
   def save(self, path):
     ''' Snapshot models '''
@@ -1862,11 +1862,11 @@ class Seq2SeqAgent(BaseAgent):
     if self.scorer:
       self.scorer.save(path)
     if self.prog_monitor:
-      torch.save(self.prog_monitor.state_dict(), path + "_pm")
+      torch.save(self.prog_monitor.state_dict(), path + '_pm')
     if self.dev_monitor:
-      torch.save(self.dev_monitor.state_dict(), path + "_dv")
+      torch.save(self.dev_monitor.state_dict(), path + '_dv')
     if self.bt_button:
-      torch.save(self.bt_button.state_dict(), path + "_bt")
+      torch.save(self.bt_button.state_dict(), path + '_bt')
 
   def load(self, path, load_scorer=False, **kwargs):
     ''' Loads parameters (but not training state) '''
@@ -1874,14 +1874,14 @@ class Seq2SeqAgent(BaseAgent):
     self.encoder.load_state_dict(torch.load(encoder_path, **kwargs))
     self.decoder.load_state_dict(torch.load(decoder_path, **kwargs))
     if self.prog_monitor:
-      self.prog_monitor.load_state_dict(torch.load(path+"_pm", **kwargs))
+      self.prog_monitor.load_state_dict(torch.load(path+'_pm', **kwargs))
     if load_scorer and self.scorer:
       self.scorer.load(path)
     if self.dev_monitor:
-      self.dev_monitor.load_state_dict(torch.load(path+"_dv", **kwargs))
+      self.dev_monitor.load_state_dict(torch.load(path+'_dv', **kwargs))
     if self.bt_button:
       if os.path.isfile(path + '_bt'):
-        self.bt_button.load_state_dict(torch.load(path+"_bt", **kwargs))
+        self.bt_button.load_state_dict(torch.load(path+'_bt', **kwargs))
 
   def modules(self):
     _m = [self.encoder, self.decoder]
@@ -1898,11 +1898,11 @@ class Seq2SeqAgent(BaseAgent):
   def modules_paths(self, base_path):
     _mp = list(self._encoder_and_decoder_paths(base_path))
     if self.prog_monitor:
-      _mp.append(base_path + "_pm")
+      _mp.append(base_path + '_pm')
     if self.scorer:
       _mp += self.scorer.modules_path(base_path)
     if self.bt_button:
-      _mp += _mp.append(base_path + "_bt")
+      _mp += _mp.append(base_path + '_bt')
     return _mp
 
   def get_loss_info(self):

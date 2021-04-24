@@ -312,6 +312,14 @@ def run(arg_parser, entry_function):
   arg_parser.add_argument("--dataset_prefix", default='R2R')
 
   args = arg_parser.parse_args()
+  args.image_list_file = os.path.join(args.refer360_root, 'imagelist.txt')
+  args.butd_filename = os.path.join(
+      'img_features', 'refer360_{}degrees_obj36.tsv'.format(args.angle_inc))
+  args.refer360_data = os.path.join(args.refer360_root,
+                                    'continuous_grounding_{}degrees'.format(args.angle_inc))
+  args.cache_root = os.path.join(args.refer360_root,
+                                 'cached_data_{}degrees'.format(args.angle_inc))
+
   print('parameters:')
   print(json.dumps(vars(args), indent=2))
 
