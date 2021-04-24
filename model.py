@@ -1,3 +1,5 @@
+from pytorch_pretrained_bert import BertTokenizer
+from pytorch_pretrained_bert import BertModel
 import math
 import torch
 import torch.nn as nn
@@ -396,6 +398,7 @@ class WhSoftDotAttention(nn.Module):
       v_dim = h_dim
     self.h_dim = h_dim
     self.v_dim = v_dim
+
     self.linear_in_h = nn.Linear(h_dim, v_dim, bias=True)
     self.sm = nn.Softmax(dim=1)
 
@@ -404,6 +407,7 @@ class WhSoftDotAttention(nn.Module):
     h: batch x h_dim
     k: batch x v_num x v_dim
     '''
+
     target = self.linear_in_h(h).unsqueeze(2)  # batch x dot_dim x 1
     attn = torch.bmm(k, target).squeeze(2)  # batch x v_num
     # attn /= math.sqrt(self.v_dim) # scaled dot product attention
@@ -436,37 +440,6 @@ class VisualSoftDotAttention(nn.Module):
     target = self.linear_in_h(h).unsqueeze(2)  # batch x dot_dim x 1
     context = self.linear_in_v(k)  # batch x v_num x dot_dim
     attn = torch.bmm(context, target).squeeze(2)  # batch x v_num
-    attn_sm = self.sm(attn)
-    attn3 = attn_sm.view(attn.size(0), 1, attn.size(1))  # batch x 1 x v_num
-    ctx = v if v is not None else k
-    weighted_context = torch.bmm(
-        attn3, ctx).squeeze(1)  # batch x v_dim
-    return weighted_context, attn
-
-
-class WhSoftDotAttention(nn.Module):
-  ''' Visual Dot Attention Layer. '''
-
-  def __init__(self, h_dim, v_dim=None):
-    '''Initialize layer.'''
-    super(WhSoftDotAttention, self).__init__()
-    if v_dim is None:
-      v_dim = h_dim
-    self.h_dim = h_dim
-    self.v_dim = v_dim
-    self.linear_in_h = nn.Linear(h_dim, v_dim, bias=True)
-    self.sm = nn.Softmax(dim=1)
-
-  def forward(self, h, k, mask=None, v=None):
-    '''Propagate h through the network.
-    h: batch x h_dim
-    k: batch x v_num x v_dim
-    '''
-    target = self.linear_in_h(h).unsqueeze(2)  # batch x dot_dim x 1
-    attn = torch.bmm(k, target).squeeze(2)  # batch x v_num
-    # attn /= math.sqrt(self.v_dim) # scaled dot product attention
-    if mask is not None:
-      attn.data.masked_fill_(mask.bool(), -float('inf'))
     attn_sm = self.sm(attn)
     attn3 = attn_sm.view(attn.size(0), 1, attn.size(1))  # batch x 1 x v_num
     ctx = v if v is not None else k
@@ -512,7 +485,8 @@ class AttnDecoderLSTM(nn.Module):
                visual_context_size=2048+128,
                image_attention_layers=None,
                num_head=8,
-               max_len=-1):
+               max_len=-1,
+               visual_hidden_size=-1):
     super(AttnDecoderLSTM, self).__init__()
     self.embedding_size = embedding_size
     self.feature_size = feature_size
@@ -562,6 +536,7 @@ class CogroundDecoderLSTM(nn.Module):
                visual_hidden_size=1024, num_head=8,
                max_len=80):
     super(CogroundDecoderLSTM, self).__init__()
+
     self.embedding_size = embedding_size
     self.feature_size = feature_size
     self.hidden_size = hidden_size
@@ -819,44 +794,50 @@ class SpeakerDecoderLSTM(nn.Module):
 
 
 ###############################################################################
-# transformer models
+# BERT model
 ###############################################################################
-
-class TransformerEncoder(nn.Module):
+class BertEncoder(nn.Module):
   def __init__(self, vocab_size, embedding_size, hidden_size, padding_idx,
                dropout_ratio, bidirectional=False, num_layers=1, glove=None):
-    super(TransformerEncoder, self).__init__()
-    self.embedding_size = embedding_size
-    self.hidden_size = hidden_size
-    self.num_layers = num_layers
-    self.num_directions = 2 if bidirectional else 1
-    self.embedding = nn.Embedding(vocab_size, embedding_size, padding_idx)
-    self.position_encoding = PositionalEncoding(hidden_size, dropout_ratio)
-    self.use_glove = glove is not None
-    self.fc = nn.Linear(embedding_size, hidden_size)
-    nn.init.xavier_normal_(self.fc.weight)
-    if self.use_glove:
-      print('Using GloVe embedding')
-      self.embedding.weight.data[...] = torch.from_numpy(glove)
-      self.embedding.weight.requires_grad = False
+    super(BertEncoder, self).__init__()
+
+    self.hidden_size = 768
+    self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    self.embedder = BertModel.from_pretrained('bert-base-uncased')
+    self.encoder2decoder = nn.Linear(768,
+                                     self.hidden_size)
+    self.drop = nn.Dropout(p=dropout_ratio)
 
   def init_state(self, batch_size):
     ''' Initialize to zero cell states and hidden states.'''
-    h0 = torch.zeros(batch_size,
-                     self.hidden_size*self.num_layers*self.num_directions,
-                     requires_grad=False)
-    c0 = torch.zeros(batch_size,
-                     self.hidden_size*self.num_layers*self.num_directions,
-                     requires_grad=False)
+    h0 = Variable(torch.zeros(
+        self.num_layers * self.num_directions,
+        batch_size,
+        self.hidden_size
+    ), requires_grad=False)
+    c0 = Variable(torch.zeros(
+        self.num_layers * self.num_directions,
+        batch_size,
+        self.hidden_size
+    ), requires_grad=False)
     return try_cuda(h0), try_cuda(c0)
 
   def forward(self, inputs, lengths):
-    batch_size = inputs.size(0)
-    embeds = self.fc(self.embedding(inputs))
-    embeds = self.position_encoding(embeds)
-    max_len = max(lengths)
-    embeds = embeds[:, :max_len, :]
-    return (embeds, *self.init_state(batch_size))
+    ''' Expects input vocab indices as (batch, seq_len). Also requires a
+        list of lengths for dynamic batching. '''
+
+    encoded_layers, _ = self.embedder.forward(inputs)
+    sequence = encoded_layers[-1]
+    h_t = sequence[:, -1, :]
+
+    decoder_init = nn.Tanh()(self.encoder2decoder(h_t))
+
+    enc_h = pack_padded_sequence(sequence, lengths, batch_first=True)
+    ctx, lengths = pad_packed_sequence(enc_h, batch_first=True)
+    ctx = self.drop(ctx)
+
+    return ctx, decoder_init, h_t
+
 
 ###############################################################################
 # scorer models

@@ -16,7 +16,7 @@ from utils import read_vocab, Tokenizer, vocab_pad_idx, timeSince, try_cuda
 from utils import colorize, filter_param
 from utils import get_confusion_matrix_image, get_bar_image
 
-from model import TransformerEncoder, EncoderLSTM, AttnDecoderLSTM
+from model import BertEncoder, EncoderLSTM, AttnDecoderLSTM
 from model import CogroundDecoderLSTM, ProgressMonitor, DeviationMonitor
 from model import SpeakerEncoderLSTM, DotScorer, BacktrackButton
 from follower import Seq2SeqAgent, RandomAgent
@@ -36,7 +36,7 @@ def get_model_prefix(args, image_feature_list,
   image_feature_name = '+'.join(
       [featurizer.get_name() for featurizer in image_feature_list])
   nn = ('{}{}{}{}{}{}{}{}{}'.format(
-      ('_ts' if args.transformer else ''),
+      ('_bt' if args.bert else ''),
       ('_sc' if args.scorer else ''),
       ('_mh' if args.num_head > 1 else ''),
       ('_cg' if args.coground else ''),
@@ -269,17 +269,28 @@ def make_follower(args, vocab,
   enc_hidden_size = int(
       args.hidden_size//2) if args.bidirectional else args.hidden_size
   glove = np.load(args.glove_path) if args.use_glove else None
-  Encoder = TransformerEncoder if args.transformer else EncoderLSTM
+
+  if args.bert:
+    Encoder = BertEncoder
+    args.hidden_size = 768
+  else:
+    Encoder = EncoderLSTM
+  args.visual_hidden_size = args.hidden_size * 2
+
   Decoder = CogroundDecoderLSTM if args.coground else AttnDecoderLSTM
   word_embedding_size = int(
       args.hidden_size / 2) if args.coground or args.bidirectional else args.hidden_size
   encoder = try_cuda(Encoder(len(vocab), word_embedding_size, enc_hidden_size, vocab_pad_idx, args.dropout_ratio,
-                             bidirectional=args.bidirectional, glove=glove))
+                             bidirectional=args.bidirectional,
+                             glove=glove,
+                             num_layers=args.encoder_num_layers))
 
   decoder = try_cuda(Decoder(
       action_embedding_size, args.hidden_size, args.dropout_ratio,
-      feature_size=feature_size, num_head=args.num_head,
-      max_len=args.max_input_length))
+      feature_size=feature_size,
+      num_head=args.num_head,
+      max_len=args.max_input_length,
+      visual_hidden_size=args.visual_hidden_size))
   if not args.coground and args.use_visited_embeddings:
     action_embedding_size -= 64
   prog_monitor = try_cuda(ProgressMonitor(action_embedding_size,
@@ -473,11 +484,12 @@ def make_arg_parser():
 
   parser.add_argument('--bidirectional', action='store_true')
   parser.add_argument('--hidden_size', type=int, default=512)
+  parser.add_argument('--encoder_num_layers', type=int, default=1)
   parser.add_argument('--learning_rate', type=float, default=0.0001)
   parser.add_argument('--clip_rate', type=float, default=0.)
   parser.add_argument('--weight_decay', type=float, default=0.0005)
   parser.add_argument('--dropout_ratio', type=float, default=0.5)
-  parser.add_argument('--transformer', action='store_true')
+  parser.add_argument('--bert', action='store_true')
   parser.add_argument('--num_head', type=int, default=1)
   parser.add_argument('--scorer', action='store_true')
   parser.add_argument('--coground', action='store_false')

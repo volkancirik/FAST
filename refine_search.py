@@ -16,7 +16,7 @@ args = DotDict({
     'image_feature_datasets': ["imagenet"],
     'bidirectional': False,
     'use_glove': False,
-    'transformer': False,
+    'bert': False,
     'coground': True,
     'num_head': 1,
     'prog_monitor': True,
