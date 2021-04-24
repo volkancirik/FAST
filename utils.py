@@ -319,6 +319,10 @@ def run(arg_parser, entry_function):
                                     'continuous_grounding_{}degrees'.format(args.angle_inc))
   args.cache_root = os.path.join(args.refer360_root,
                                  'cached_data_{}degrees'.format(args.angle_inc))
+  if args.prefix in ['refer360']:
+    args.env = 'refer360'
+  else:
+    args.env = 'r2r'
 
   print('parameters:')
   print(json.dumps(vars(args), indent=2))

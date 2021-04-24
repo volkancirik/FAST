@@ -501,7 +501,6 @@ def make_arg_parser():
   parser.add_argument('--language', type=str, default='en-ALL')
   parser.add_argument('--glove_path', type=str,
                       default='tasks/R2R/data/train_glove.en-ALL.npy')
-  parser.add_argument('--env', type=str, default='r2r')
   parser.add_argument('--error_margin', type=float, default=3.0)
   parser.add_argument('--use_intermediate', action='store_true')
   parser.add_argument('--add_asterix', action='store_true')
