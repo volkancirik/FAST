@@ -32,13 +32,14 @@ class Refer360Evaluation(object):
         'trajectory':[(viewpoint_id, heading_rads, elevation_rads),]}] '''
 
   def __init__(self, splits,
-               args=None):
+               args=None,
+               sim=None):
 
     prefix = args.prefix
     refer360_data = args.refer360_data
 
     error_margin = args.error_margin
-    self.sim = args.sim
+    self.sim = sim
 
     self.splits = splits
     self.gt = {}

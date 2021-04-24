@@ -30,7 +30,8 @@ class Evaluation(object):
         'trajectory':[(viewpoint_id, heading_rads, elevation_rads),]}] '''
 
   def __init__(self, splits,
-               args=None):
+               sim=None,
+               args=None,):
 
     prefix = args.prefix
     error_margin = args.error_margin

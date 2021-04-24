@@ -1,9 +1,11 @@
 import torch
 from torch import optim
-
+import json
 import os
 import os.path
+import sys
 import time
+import datetime
 import numpy as np
 import pandas as pd
 from collections import defaultdict
@@ -29,7 +31,8 @@ from vocab import SUBTRAIN_VOCAB, TRAIN_VOCAB
 from tensorboardX import SummaryWriter
 
 
-def get_model_prefix(args, image_feature_list):
+def get_model_prefix(args, image_feature_list,
+                     dump_args=False):
   image_feature_name = '+'.join(
       [featurizer.get_name() for featurizer in image_feature_list])
   nn = ('{}{}{}{}{}{}{}{}{}'.format(
@@ -57,6 +60,15 @@ def get_model_prefix(args, image_feature_list):
     model_prefix = model_prefix.replace(
         'follower', 'follower_with_pretraining', 1)
 
+  if dump_args:
+    now = datetime.datetime.now()
+    args_fn = '%s.args-%d-%d-%d,%d:%d:%d' % (model_prefix, now.year, now.month,
+                                             now.day, now.hour, now.minute, now.second)
+    with open(os.path.join(args.PLOT_DIR, args_fn), 'w') as out_file:
+      out_file.write(' '.join(sys.argv))
+      out_file.write('\n')
+      json.dump(dict(args), out_file)
+      out_file.write('\n')
   return model_prefix
 
 
@@ -74,7 +86,7 @@ def train(args, train_env, agent, optimizers, n_iters, val_envs=None):
   split_string = '-'.join(train_env.splits)
   print('Training with %s feedback' % args.feedback_method)
   writer_path = os.path.join(args.PLOT_DIR, get_model_prefix(
-      args, train_env.image_features_list))
+      args, train_env.image_features_list, dump_args=True))
   writer = SummaryWriter(writer_path)
   print('tensorboard path is', writer_path)
 
@@ -306,6 +318,7 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
     EnvBatch = R2RBatch
     ImgFeatures = ImageFeatures
     Eval = eval.Evaluation
+    env_sim = None
   elif args.env == 'refer360':
     EnvBatch = Refer360Batch
     ImgFeatures = Refer360ImageFeatures
@@ -315,7 +328,7 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
                    Refer360ImageFeatures.IMAGE_H,
                    Refer360ImageFeatures.VFOV)
     sim.load_maps()
-    args.sim = sim
+    env_sim = sim
   else:
     raise NotImplementedError(
         'this {} environment is not implemented.'.format(args.env))
@@ -334,7 +347,9 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
                        splits=[split],
                        tokenizer=tok,
                        args=args),
-              Eval([split], args=args))
+              Eval([split],
+                   sim=env_sim,
+                   args=args))
       for split in test_splits}
 
   feature_size = sum(

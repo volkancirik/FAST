@@ -309,7 +309,6 @@ def run(arg_parser, entry_function):
   arg_parser.add_argument("--experiment_name", type=str, default='debug')
   arg_parser.add_argument("--batch_size", type=int, default=64)
   arg_parser.add_argument("--save_args", action='store_false')
-  arg_parser.add_argument("--dataset_prefix", default='R2R')
 
   args = arg_parser.parse_args()
   args.image_list_file = os.path.join(args.refer360_root, 'imagelist.txt')
@@ -336,43 +335,24 @@ def run(arg_parser, entry_function):
   #     'tasks/R2R/experiments/', args.experiment_name, 'plots')
 
   args.RESULT_DIR = os.path.join(
-      'tasks/{}/experiments/'.format(args.dataset_prefix), args.experiment_name, 'results')
+      'tasks/{}/experiments/'.format(args.prefix), args.experiment_name, 'results')
   args.SNAPSHOT_DIR = os.path.join(
-      'tasks/{}/experiments/'.format(args.dataset_prefix), args.experiment_name, 'snapshots')
+      'tasks/{}/experiments/'.format(args.prefix), args.experiment_name, 'snapshots')
   args.PLOT_DIR = os.path.join(
-      'tasks/{}/experiments/'.format(args.dataset_prefix), args.experiment_name, 'plots')
+      'tasks/{}/experiments/'.format(args.prefix), args.experiment_name, 'plots')
 
   make_dirs([args.RESULT_DIR, args.SNAPSHOT_DIR, args.PLOT_DIR])
 
   import torch.cuda
   torch.cuda.disabled = args.no_cuda
 
-  def log(out_file):
-    ''' git updates '''
-    subprocess.call("git rev-parse HEAD", shell=True, stdout=out_file)
-    subprocess.call("git --no-pager diff", shell=True, stdout=out_file)
-    out_file.write('\n\n')
-    out_file.write(' '.join(sys.argv))
-    out_file.write('\n\n')
-    json.dump(dict(args), out_file)
-    out_file.write('\n\n')
-
-  # log(sys.stdout)
-  if args.save_args:
-    import datetime
-    now = datetime.datetime.now()
-    args_fn = 'args-%d-%d-%d,%d:%d:%d' % (now.year, now.month,
-                                          now.day, now.hour, now.minute, now.second)
-    with open(os.path.join(args.PLOT_DIR, args_fn), 'w') as f:
-      log(f)
-
   # Make the folders
   args.RESULT_DIR = os.path.join(
-      'tasks/{}/experiments/'.format(args.dataset_prefix), args.experiment_name, 'results')
+      'tasks/{}/experiments/'.format(args.prefix), args.experiment_name, 'results')
   args.SNAPSHOT_DIR = os.path.join(
-      'tasks/{}/experiments/'.format(args.dataset_prefix), args.experiment_name, 'snapshots')
+      'tasks/{}/experiments/'.format(args.prefix), args.experiment_name, 'snapshots')
   args.PLOT_DIR = os.path.join(
-      'tasks/{}/experiments/'.format(args.dataset_prefix), args.experiment_name, 'plots')
+      'tasks/{}/experiments/'.format(args.prefix), args.experiment_name, 'plots')
   make_dirs([args.RESULT_DIR, args.SNAPSHOT_DIR, args.PLOT_DIR])
 
   if args.ipdb:

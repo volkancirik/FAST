@@ -282,8 +282,15 @@ def cache(args, agent, train_env, val_envs):
 
   if args.env == 'r2r':
     Eval = eval.Evaluation
+    env_sim = None
   elif args.env == 'refer360':
     Eval = refer360_eval.Refer360Evaluation
+    sim = make_sim(args.cache_root,
+                   Refer360ImageFeatures.IMAGE_W,
+                   Refer360ImageFeatures.IMAGE_H,
+                   Refer360ImageFeatures.VFOV)
+    sim.load_maps()
+    env_sim = sim
   else:
     raise NotImplementedError(
         'this {} environment is not implemented.'.format(args.env))
@@ -301,8 +308,9 @@ def cache(args, agent, train_env, val_envs):
         json.dump(agent.cache_candidates, outfile, cls=NumpyEncoder)
       with open('search_{}{}{}{}.json'.format(env_name, '_debug' if args.debug else '', args.max_episode_len, args.early_stop), 'w') as outfile:
         json.dump(agent.cache_search, outfile, cls=NumpyEncoder)
-    score_summary, _, _ = Eval(
-        env.splits, args=args).score_results(agent.results)
+    score_summary, _, _ = Eval(env.splits,
+                               sim=env_sim,
+                               args=args).score_results(agent.results)
     pp.pprint(score_summary)
 
 
