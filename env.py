@@ -805,7 +805,7 @@ class BottomUpImageFeatures(ImageFeatures):
       if attr_tokens in self.attribute_to_index and obj_tokens in self.object_to_index:
         parse_options.append(
             (self.attribute_to_index[attr_tokens], self.object_to_index[obj_tokens]))
-    assert parse_options, 'didn't find any parses for {}'.format(tokens)
+    assert parse_options, 'did not find any parses for {}'.format(tokens)
     # prefer longer objects, e.g. 'electrical outlet' over 'electrical' 'outlet'
     return parse_options[0]
 
@@ -973,7 +973,7 @@ class R2RBatch():
 
     counts = defaultdict(int)
 
-    if prefix == 'r2r':
+    if prefix in ['r2r', 'R2R'] or 'RxR' in prefix:
       instr_key = 'path_id'
     elif prefix == 'REVERIE':
       instr_key = 'id'

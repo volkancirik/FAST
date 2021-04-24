@@ -44,7 +44,7 @@ class Evaluation(object):
     self.instructions = {}
     counts = defaultdict(int)
 
-    if prefix == 'r2r':
+    if prefix in ['r2r', 'R2R'] or 'RxR' in prefix:
       instr_key = 'path_id'
     elif prefix == 'REVERIE':
       instr_key = 'id'
