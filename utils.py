@@ -320,6 +320,7 @@ def run(arg_parser, entry_function):
                                  'cached_data_{}degrees'.format(args.angle_inc))
   if args.prefix in ['refer360']:
     args.env = 'refer360'
+    args.metrics = 'fov_accuracy'
   else:
     args.env = 'r2r'
 
