@@ -184,7 +184,7 @@ class Refer360ImageFeatures(object):
                                  default=['mean_pooled'])
     argument_parser.add_argument('--refer360_image_feature_model',
                                  choices=['resnet', 'clip'],
-                                 default='resnet')
+                                 default='clip')
 
   def get_name(self):
     raise NotImplementedError('base class does not have get_name')
