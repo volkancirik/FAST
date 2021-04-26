@@ -240,7 +240,8 @@ class MeanPooledImageFeatures(Refer360ImageFeatures):
                feature_model='resnet',
                n_fovs=240):
     self.feature_dim = MODEL2FEATURE_DIM[feature_model]
-    self.feature_model = MODEL2PREFIX[feature_model]
+    self.feature_model = feature_model
+    self.feature_prefix = MODEL2PREFIX[feature_model]
     self.features = {}
     self.n_fovs = n_fovs
 
@@ -257,7 +258,7 @@ class MeanPooledImageFeatures(Refer360ImageFeatures):
     for fname in pbar:
       pano = fname.split('/')[-1].split('.')[0]
       feature_file = os.path.join(
-          cache_root, 'features', '{}'.format(pano) + self.feature_model + '.npy')
+          cache_root, 'features', '{}'.format(pano) + self.feature_prefix + '.npy')
       if not os.path.exists(feature_file):
         print('file missing:', feature_file)
         quit(0)
@@ -285,7 +286,7 @@ class MeanPooledImageFeatures(Refer360ImageFeatures):
     return self.features[long_id]
 
   def get_name(self):
-    name = 'mean_pooled'+self.feature_model
+    name = 'mean_pooled.'+self.feature_model
     return name
 
 
