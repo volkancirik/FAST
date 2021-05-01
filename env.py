@@ -512,7 +512,7 @@ class ClipImageFeatures(ImageFeatures):
 
 
 class OracleImageFeatures(ImageFeatures):
-  def __init__(self, box_root='/projects2/REVERIE/tasks/REVERIE/data/BBox/'):
+  def __init__(self, box_root='./tasks/REVERIE/data/BBox/'):
 
     print('Loading oracle features')
     self.features = defaultdict(list)
@@ -579,7 +579,7 @@ class OracleImageFeatures(ImageFeatures):
 
 
 class NextStepImageFeatures(ImageFeatures):
-  def __init__(self, box_root='/projects1/Matterport3DSimulator/tasks/R2R_FAST/data/BBOX/'):
+  def __init__(self, box_root='./tasks/FAST/data/BBOX/'):
 
     print('Loading next step features')
     self.features = defaultdict(list)
