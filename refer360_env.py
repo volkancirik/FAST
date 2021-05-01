@@ -525,6 +525,8 @@ class Refer360Batch(R2RBatch):
     use_oracle_embeddings = args.use_oracle_embeddings
     angle_inc = args.angle_inc
 
+    self.deaf = args.deaf
+    self.blind = args.blind
     self.num_views = Refer360ImageFeatures.NUM_VIEWS
     self.angle_inc = angle_inc
     self.image_features_list = image_features_list
@@ -560,6 +562,7 @@ class Refer360Batch(R2RBatch):
         new_item['instructions'] = instr
         if tokenizer:
           self.tokenizer = tokenizer
+          self.language = language
           new_item['instr_encoding'], new_item['instr_length'], n_unk, n_found, unk = tokenizer.encode_sentence(
               instr, language=language)
           total_found += n_found
@@ -600,8 +603,13 @@ class Refer360Batch(R2RBatch):
       print('will use shortest path actions')
     self.use_visited_embeddings = use_visited_embeddings
     self.use_oracle_embeddings = use_oracle_embeddings
+
     self._static_loc_embeddings = [
         build_viewpoint_loc_embedding(viewIndex, angle_inc=self.angle_inc) for viewIndex in range(9)]
+    if self.blind:
+      vle = self._static_loc_embeddings[0]
+      self._static_loc_embeddings = [
+          np.zeros_like(vle) for viewIndex in range(9)]
 
   def set_beam_size(self, beam_size,
                     force_reload=False,
@@ -719,6 +727,7 @@ class Refer360Batch(R2RBatch):
           action_embedding = np.concatenate(
               (action_embedding, oracle_embedding), axis=-1)
 
+        instructions = '. . .' if self.deaf else item['instructions']
         ob = {
             'instr_id': item['instr_id'],
             'scan': state.scanId,
@@ -729,7 +738,7 @@ class Refer360Batch(R2RBatch):
             'feature': [feature_with_loc],
             'adj_loc_list': adj_loc_list,
             'action_embedding': action_embedding,
-            'instructions': item['instructions'],
+            'instructions': instructions,
         }
         if include_teacher and self.notTest:
           ob['teacher'] = teacher_action
@@ -737,10 +746,14 @@ class Refer360Batch(R2RBatch):
           ob['deviation'] = self._deviation(state, item['path'])
           ob['progress'] = self._progress(state, item['path']),
           ob['distance'] = self._distance(state, item['path']),
-        if 'instr_encoding' in item:
-          ob['instr_encoding'] = item['instr_encoding']
-        if 'instr_length' in item:
-          ob['instr_length'] = item['instr_length']
+        if self.deaf:
+          ob['instr_encoding'] = np.array([1])
+          ob['instr_length'] = 1
+        else:
+          if 'instr_encoding' in item:
+            ob['instr_encoding'] = item['instr_encoding']
+          if 'instr_length' in item:
+            ob['instr_length'] = item['instr_length']
         obs_batch.append(ob)
       if beamed:
         obs.append(obs_batch)

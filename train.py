@@ -522,6 +522,9 @@ def make_arg_parser():
                       default='refer360_data')
   parser.add_argument('--angle_inc', type=int, default=30)
 
+  parser.add_argument('--deaf', action='store_true')
+  parser.add_argument('--blind', action='store_true')
+
   parser.add_argument('--verbose', action='store_true')
 
   return parser
