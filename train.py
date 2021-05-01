@@ -286,11 +286,12 @@ def make_follower(args, vocab,
                              num_layers=args.encoder_num_layers))
 
   decoder = try_cuda(Decoder(
-      action_embedding_size, args.hidden_size, args.dropout_ratio,
-      feature_size=feature_size,
-      num_head=args.num_head,
-      max_len=args.max_input_length,
-      visual_hidden_size=args.visual_hidden_size))
+    action_embedding_size, args.hidden_size, args.dropout_ratio,
+    feature_size=feature_size,
+    num_head=args.num_head,
+    max_len=args.max_input_length,
+    visual_hidden_size=args.visual_hidden_size,
+    visual_context_size=feature_size))
   if not args.coground and args.use_visited_embeddings:
     action_embedding_size -= 64
   prog_monitor = try_cuda(ProgressMonitor(action_embedding_size,

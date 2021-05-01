@@ -534,7 +534,7 @@ class CogroundDecoderLSTM(nn.Module):
   def __init__(self, embedding_size, hidden_size, dropout_ratio,
                feature_size=2048+128+24, image_attention_layers=None,
                visual_hidden_size=1024, num_head=8,
-               max_len=80):
+               max_len=80, visual_context_size = -1):
     super(CogroundDecoderLSTM, self).__init__()
 
     self.embedding_size = embedding_size
