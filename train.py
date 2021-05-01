@@ -466,11 +466,11 @@ def make_arg_parser():
   parser.add_argument('--load_follower', type=str, default='')
   parser.add_argument('--load_traj_encoder', type=str, default='')
   parser.add_argument('--feedback_method',
-                      choices=['sample', 'teacher', 'sample1step', 'sample2step', 'sample3step', 'teacher+sample', 'recover', 'argmax'], default='teacher')
+                      choices=['sample', 'teacher', 'sample1step', 'sample2step', 'sample3step', 'teacher+sample', 'recover', 'argmax'], default='sample')
   parser.add_argument('--debug', action='store_true')
 
   parser.add_argument('--bidirectional', action='store_true')
-  parser.add_argument('--hidden_size', type=int, default=512)
+  parser.add_argument('--hidden_size', type=int, default=256)
   parser.add_argument('--encoder_num_layers', type=int, default=2)
   parser.add_argument('--learning_rate', type=float, default=0.0001)
   parser.add_argument('--clip_rate', type=float, default=0.)
@@ -525,6 +525,7 @@ def make_arg_parser():
 
   parser.add_argument('--deaf', action='store_true')
   parser.add_argument('--blind', action='store_true')
+  parser.add_argument('--no_lookahead', action='store_true')
 
   parser.add_argument('--verbose', action='store_true')
 

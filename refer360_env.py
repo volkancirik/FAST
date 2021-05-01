@@ -166,13 +166,14 @@ class Refer360ImageFeatures(object):
         feats.append(MeanPooledImageFeatures(cache_root=args.cache_root,
                                              image_list_file=args.image_list_file,
                                              n_fovs=n_fovs,
-                                             feature_model=args.refer360_image_feature_model))
+                                             feature_model=args.refer360_image_feature_model,
+                                             no_lookahead=args.no_lookahead))
       if 'butd' in image_feature_type:
         feats.append(BUTDImageFeatures(cache_root=args.cache_root,
                                        image_list_file=args.image_list_file,
                                        butd_filename=args.butd_filename,
-                                       n_fovs=n_fovs,))
-
+                                       n_fovs=n_fovs,
+                                       no_lookahead=args.no_lookahead))
       assert len(feats) >= 1, 'len(feats) >= 1, {} >= 0'.format(len(feats))
     return feats
 
@@ -238,18 +239,21 @@ class MeanPooledImageFeatures(Refer360ImageFeatures):
                cache_root='',
                image_list_file='',
                feature_model='resnet',
-               n_fovs=240):
+               n_fovs=240,
+               no_lookahead = False):
     self.feature_dim = MODEL2FEATURE_DIM[feature_model]
     self.feature_model = feature_model
     self.feature_prefix = MODEL2PREFIX[feature_model]
     self.features = {}
     self.n_fovs = n_fovs
+    self.no_lookahead = no_lookahead
 
     meta_file = os.path.join(cache_root, 'meta.npy')
     meta = np.load(meta_file, allow_pickle=True)[()]
     nodes = meta['nodes']
 
     print('loading image features for refer360 from', image_list_file)
+    print('no_lookahead:',self.no_lookahead)
     image_list = [line.strip()
                   for line in open(image_list_file)]
 
@@ -270,10 +274,11 @@ class MeanPooledImageFeatures(Refer360ImageFeatures):
             (Refer360ImageFeatures.NUM_VIEWS, self.feature_dim), dtype=np.float32)
         feats[4, :] = fov_feats[idx]
 
-        for neighbor in nodes[idx]['neighbor2dir']:
-          n_direction = nodes[idx]['neighbor2dir'][neighbor]
-          dir_idx = DIR2IDX[n_direction]
-          feats[dir_idx, :] = fov_feats[neighbor]
+        if not self.no_lookahead:
+          for neighbor in nodes[idx]['neighbor2dir']:
+            n_direction = nodes[idx]['neighbor2dir'][neighbor]
+            dir_idx = DIR2IDX[n_direction]
+            feats[dir_idx, :] = fov_feats[neighbor]
         pano_fov = self._make_id(pano, idx)
         self.features[pano_fov] = feats
 
@@ -287,6 +292,8 @@ class MeanPooledImageFeatures(Refer360ImageFeatures):
 
   def get_name(self):
     name = 'mean_pooled.'+self.feature_model
+    if self.no_lookahead:
+      name += 'NOLA'
     return name
 
 
@@ -294,12 +301,14 @@ class BUTDImageFeatures(Refer360ImageFeatures):
   def __init__(self, butd_filename='',
                cache_root='',
                image_list_file='',
-               n_fovs=240):
+               n_fovs=240,
+               no_lookahead=False):
 
     print('Loading bottom-up top-down features')
     self.features = defaultdict(list)
     self.feature_dim = 2048
     self.n_fovs = n_fovs
+    self.no_lookahead = no_lookahead
 
     FIELDNAMES = ['img_id', 'img_h', 'img_w', 'objects_id', 'objects_conf',
                   'attrs_id', 'attrs_conf', 'num_boxes', 'boxes', 'features']
@@ -339,6 +348,7 @@ class BUTDImageFeatures(Refer360ImageFeatures):
 
     print('loaded BUTD features', image_list_file)
     print('preparing image features for refer360..')
+    print('no_lookahead:',self.no_lookahead)
     image_list = [line.strip()
                   for line in open(image_list_file)]
     pbar = tqdm(image_list)
@@ -351,10 +361,11 @@ class BUTDImageFeatures(Refer360ImageFeatures):
             (Refer360ImageFeatures.NUM_VIEWS, self.feature_dim), dtype=np.float32)
         feats[4, :] = fov2feat['{}_{}'.format(pano, idx)]
 
-        for neighbor in nodes[idx]['neighbor2dir']:
-          n_direction = nodes[idx]['neighbor2dir'][neighbor]
-          dir_idx = DIR2IDX[n_direction]
-          feats[dir_idx, :] = fov2feat['{}_{}'.format(pano, neighbor)]
+        if not self.no_lookahead:
+          for neighbor in nodes[idx]['neighbor2dir']:
+            n_direction = nodes[idx]['neighbor2dir'][neighbor]
+            dir_idx = DIR2IDX[n_direction]
+            feats[dir_idx, :] = fov2feat['{}_{}'.format(pano, neighbor)]
         pano_fov = self._make_id(pano, idx)
         self.features[pano_fov] = feats
     print('image features for refer360 are prepared.')
@@ -368,6 +379,8 @@ class BUTDImageFeatures(Refer360ImageFeatures):
 
   def get_name(self):
     name = '_with_butd'
+    if self.no_lookahead:
+      name += 'NOLA'
     return name
 
 
