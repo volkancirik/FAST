@@ -370,7 +370,7 @@ def load_butd_features(butd_filename,
 
       scanId, viewpointId = item['img_id'].split('.')
       pano_fov = '{}_{}'.format(scanId, viewpointId)
-      feats = np.sum(item['features'], axis=0)
+      feats = np.sum(feats, axis=0)
       fov2feat[pano_fov] = feats
   return fov2feat
 
