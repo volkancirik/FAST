@@ -318,6 +318,9 @@ def run(arg_parser, entry_function):
                                     'continuous_grounding_{}degrees'.format(args.angle_inc))
   args.cache_root = os.path.join(args.refer360_root,
                                  'cached_data_{}degrees'.format(args.angle_inc))
+  args.prior_prefix = os.path.join(
+      'img_features', 'refer360_{}degrees_'.format(args.angle_inc))
+
   if args.prefix in ['refer360']:
     args.env = 'refer360'
     args.metrics = 'fov_accuracy'

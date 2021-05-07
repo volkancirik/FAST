@@ -7,6 +7,7 @@ import csv
 import pdb
 import random
 import os.path
+import base64
 
 from collections import defaultdict
 import numpy as np
@@ -17,76 +18,20 @@ from env import _build_action_embedding
 from env import R2RBatch
 from utils import structured_map, try_cuda
 from refer360_sim import Refer360Simulator, WorldState
-import base64
-import io
-import json
+from refer360_utils import DIR2IDX, MODEL2FEATURE_DIM, MODEL2PREFIX
+from refer360_utils import get_object_dictionaries
+from refer360_utils import load_cnn_features, load_vectors, load_butd
+from refer360_utils import build_viewpoint_loc_embedding
+from refer360_utils import build_visited_embedding
+from refer360_utils import build_oracle_embedding
 
 file_path = os.path.dirname(__file__)
 module_path = os.path.abspath(os.path.join(file_path))
 sys.path.append(module_path)
-module_path = os.path.abspath(os.path.join(file_path, '..', '..', 'build'))
+module_path = os.path.abspath(os.path.join(
+    file_path, '..', '..', 'build_refer360'))
 sys.path.append(module_path)
 csv.field_size_limit(sys.maxsize)
-
-DIR2IDX = {
-    'ul': 0,
-    'u': 1,
-    'ur': 2,
-    'l': 3,
-    'r': 5,
-    'dl': 6,
-    'd': 7,
-    'dr': 8
-}
-
-
-def build_viewpoint_loc_embedding(viewIndex,
-                                  angle_inc=15.0):
-  '''
-  Position embedding:
-  heading 64D + elevation 64D
-  1) heading: [sin(heading) for _ in range(1, 9)] +
-              [cos(heading) for _ in range(1, 9)]
-  2) elevation: [sin(elevation) for _ in range(1, 9)] +
-                [cos(elevation) for _ in range(1, 9)]
-  '''
-  embedding = np.zeros((9, 128), np.float32)
-
-  for absViewIndex in range(9):
-    relViewIndex = (
-        absViewIndex) % 3 + (absViewIndex // 3) * 3
-    rel_heading = (relViewIndex % 3 - viewIndex % 3) * angle_inc
-    rel_elevation = ((relViewIndex // 3) - viewIndex // 3) * angle_inc
-    embedding[absViewIndex,  0:32] = np.sin(rel_heading)
-    embedding[absViewIndex, 32:64] = np.cos(rel_heading)
-    embedding[absViewIndex, 64:96] = np.sin(rel_elevation)
-    embedding[absViewIndex,   96:] = np.cos(rel_elevation)
-  return embedding
-
-
-def _build_visited_embedding(adj_loc_list, visited):
-  n_emb = 64
-  half = int(n_emb/2)
-  embedding = np.zeros((len(adj_loc_list), n_emb), np.float32)
-  for kk, adj in enumerate(adj_loc_list):
-    val = visited[adj['nextViewpointId']]
-    embedding[kk,  0:half] = np.sin(val)
-    embedding[kk, half:] = np.cos(val)
-  return embedding
-
-
-def _build_oracle_embedding(adj_loc_list, gt_viewpoint_idx):
-  n_emb = 64
-  half = int(n_emb/2)
-  embedding = np.zeros((len(adj_loc_list), n_emb), np.float32)
-
-  for kk, adj in enumerate(adj_loc_list):
-    val = 0
-    if kk == gt_viewpoint_idx:
-      val = 1
-    embedding[kk,  0:half] = np.sin(val)
-    embedding[kk, half:] = np.cos(val)
-  return embedding
 
 
 def load_world_state(sim, world_state):
@@ -179,6 +124,10 @@ class Refer360ImageFeatures(object):
                                        no_lookahead=args.no_lookahead,
                                        use_object_embeddings=args.use_object_embeddings,
                                        center_model=args.refer360_center_model))
+      if 'prior' in image_feature_type:
+        feats.append(PriorImageFeatures(
+            prior_prefix=args.prior_prefix,
+            prior_method=args.refer360_prior_method,))
       assert len(feats) >= 1, 'len(feats) >= 1, {} >= 0'.format(len(feats))
     return feats
 
@@ -186,7 +135,7 @@ class Refer360ImageFeatures(object):
   def add_args(argument_parser):
     argument_parser.add_argument('--refer360_image_feature_type', nargs='+',
                                  choices=['none', 'random',
-                                          'mean_pooled', 'butd'],
+                                          'mean_pooled', 'butd', 'prior'],
                                  default=['mean_pooled'])
     argument_parser.add_argument('--refer360_image_feature_model',
                                  choices=['resnet', 'clip'],
@@ -194,6 +143,11 @@ class Refer360ImageFeatures(object):
     argument_parser.add_argument('--refer360_center_model',
                                  choices=['resnet', ''],
                                  default='')
+    argument_parser.add_argument('--refer360_prior_method',
+                                 default='vg',
+                                 choices=['vg', 'wn', 'ss',
+                                          'r30butd', 'gpt3_vg'],
+                                 )
     argument_parser.add_argument(
         '--use_object_embeddings', action='store_true')
 
@@ -236,34 +190,6 @@ class NoImageFeatures(Refer360ImageFeatures):
 
   def get_name(self):
     return 'none'
-
-
-MODEL2PREFIX = {'resnet': '',
-                'clip': '.clip'}
-MODEL2FEATURE_DIM = {'resnet': 2048,
-                     'clip': 512}
-
-
-def load_cnn_features(image_list, cache_root, feature_prefix, n_fovs):
-
-  print('loading cnn features with prefix:', feature_prefix)
-  pbar = tqdm(image_list)
-  print('cached features root:', cache_root)
-  fov2feat = {}
-  for fname in pbar:
-    pano = fname.split('/')[-1].split('.')[0]
-    feature_file = os.path.join(
-        cache_root, 'features', '{}'.format(pano) + feature_prefix + '.npy')
-    if not os.path.exists(feature_file):
-      print('file missing:', feature_file)
-      quit(0)
-
-    fov_feats = np.load(feature_file).squeeze()
-
-    for idx in range(n_fovs):
-      pano_fov = '{}_{}'.format(pano, idx)
-      fov2feat[pano_fov] = fov_feats[idx]
-  return fov2feat
 
 
 class MeanPooledImageFeatures(Refer360ImageFeatures):
@@ -322,84 +248,6 @@ class MeanPooledImageFeatures(Refer360ImageFeatures):
     if self.no_lookahead:
       name += 'NOLA'
     return name
-
-
-def load_butd_features(butd_filename,
-                       threshold=0.5,
-                       w2v=None,
-                       objid2name=None):
-  fov2feat = {}
-  FIELDNAMES = ['img_id', 'img_h', 'img_w', 'objects_id', 'objects_conf',
-                'attrs_id', 'attrs_conf', 'num_boxes', 'boxes', 'features']
-
-  with open(butd_filename) as f:
-    reader = csv.DictReader(f, FIELDNAMES, delimiter='\t')
-    for i, item in enumerate(reader):
-      for key in ['img_h', 'img_w', 'num_boxes']:
-        item[key] = int(item[key])
-
-      boxes = item['num_boxes']
-      decode_config = [
-          ('objects_id', (boxes, ), np.int64),
-          ('objects_conf', (boxes, ), np.float32),
-          ('attrs_id', (boxes, ), np.int64),
-          ('attrs_conf', (boxes, ), np.float32),
-          ('boxes', (boxes, 4), np.float32),
-          ('features', (boxes, -1), np.float32),
-      ]
-      for key, shape, dtype in decode_config:
-        item[key] = np.frombuffer(base64.b64decode(item[key]), dtype=dtype)
-        item[key] = item[key].reshape(shape)
-        item[key].setflags(write=False)
-
-      keep_boxes = np.where(item['objects_conf'] >= threshold)[0]
-
-      boxes = item['boxes'][keep_boxes]
-      feats = item['features'][keep_boxes]
-      obj_ids = item['objects_id'][keep_boxes]
-      # obj_conf = item['objects_conf'][keep_boxes]
-      # attr_conf = item['attrs_conf'][keep_boxes]
-      # attr_id = item['attrs_id'][keep_boxes]
-
-      if w2v != None and objid2name != None:
-        emb_feats = np.zeros((feats.shape[0], 300), dtype=np.float32)
-        for ii, obj_id in enumerate(obj_ids):
-          obj_name = objid2name.get(obj_id, '</s>')
-          emb_feats[ii, :] = w2v.get(obj_name, w2v['</s>'])
-        feats = emb_feats
-
-      scanId, viewpointId = item['img_id'].split('.')
-      pano_fov = '{}_{}'.format(scanId, viewpointId)
-      feats = np.sum(item['features'], axis=0)
-      fov2feat[pano_fov] = feats
-  return fov2feat
-
-
-def load_vectors(fname, vocab):
-  fin = io.open(fname, 'r', encoding='utf-8', newline='\n', errors='ignore')
-  n, d = map(int, fin.readline().split())
-  data = {}
-  for line in fin:
-    tokens = line.rstrip().split(' ')
-    if tokens[0] not in vocab:
-      continue
-    data[tokens[0]] = np.array([float(v) for v in tokens[1:]])
-  return data
-
-
-def get_object_dictionaries(obj_dict_file):
-  '''Loads object object dictionaries
-  idx ->  visual genome
-  visual genome -> idx2
-  idx -> object classes'''
-
-  data = json.load(
-      open(obj_dict_file, 'r'))
-  vg2idx = data['vg2idx']
-  idx2vg = data['idx2vg']
-  obj_classes = data['obj_classes']
-
-  return vg2idx, idx2vg, obj_classes
 
 
 class BUTDImageFeatures(Refer360ImageFeatures):
@@ -462,9 +310,10 @@ class BUTDImageFeatures(Refer360ImageFeatures):
           image_list, cache_root, center_prefix, n_fovs)
 
     print('loading BUTD features...', image_list_file)
-    fov2feat = load_butd_features(butd_filename,
-                                  w2v=self.w2v,
-                                  objid2name=self.objid2name)
+    fov2feat = load_butd(butd_filename,
+                         w2v=self.w2v,
+                         objid2name=self.objid2name,
+                         keys=['features'])['features']
     print('loaded BUTD features!', image_list_file)
     print('loading image features for refer360...')
 
@@ -505,6 +354,45 @@ class BUTDImageFeatures(Refer360ImageFeatures):
       name += 'CM'+self.center_model
     if self.no_lookahead:
       name += 'NOLA'
+    return name
+
+
+class PriorImageFeatures(Refer360ImageFeatures):
+  def __init__(self,
+               prior_prefix='img_features/refer360_30degrees_',
+               prior_method='vg'):
+
+    self.feature_dim = 300
+    self.features = {}
+    self.prior_method = prior_method
+
+    FIELDNAMES = ['pano_fov', 'features']
+    decode_config = [
+        ('features', (9, 300), np.float32),
+    ]
+    prior_file = prior_prefix + '{}.tsv'.format(prior_method)
+
+    print('loading prior image features from', prior_file)
+    with open(prior_file) as f:
+      reader = csv.DictReader(f, FIELDNAMES, delimiter='\t')
+      for i, item in enumerate(reader):
+        for key, shape, dtype in decode_config:
+          item[key] = np.frombuffer(
+              base64.decodebytes(item[key].encode()), dtype=dtype).reshape(9, 300)
+        pano_fov = item['pano_fov']
+        features = item['features']
+        self.features[pano_fov] = features
+    print('image features for refer360 are prepared!')
+
+  def _make_id(self, scanId, viewpointId):
+    return '{}_{}'.format(scanId, viewpointId)
+
+  def get_features(self, state):
+    long_id = self._make_id(state.scanId, state.viewpointId)
+    return self.features[long_id]
+
+  def get_name(self):
+    name = '_prior{}NOLA'.format(self.prior_method)
     return name
 
 
@@ -586,7 +474,7 @@ r2r2Refer360 = {'val_seen': 'validation.seen',
 def load_datasets(splits,
                   root='',
                   use_intermediate=True):
-  d, s = [], []
+  d = []
   converted = []
   act_length = []
   sen_length = []
@@ -854,12 +742,12 @@ class Refer360Batch(R2RBatch):
             state, adj_loc_list, item['gt_actions_path'][-1], item['gt_actions_path'])
         if self.use_visited_embeddings:
           item['visited_viewpoints'][state.viewpointId] += 1.0
-          visited_embedding = _build_visited_embedding(
+          visited_embedding = build_visited_embedding(
               adj_loc_list, item['visited_viewpoints'])
           action_embedding = np.concatenate(
               (action_embedding, visited_embedding), axis=-1)
         if self.use_oracle_embeddings:
-          oracle_embedding = _build_oracle_embedding(
+          oracle_embedding = build_oracle_embedding(
               adj_loc_list, teacher_action)
           action_embedding = np.concatenate(
               (action_embedding, oracle_embedding), axis=-1)
