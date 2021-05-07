@@ -234,6 +234,7 @@ class MeanPooledImageFeatures(Refer360ImageFeatures):
             neighbor_fov = self._make_id(pano, neighbor)
             feats[dir_idx, :] = fov2feat[neighbor_fov]
         self.features[pano_fov] = feats
+    del fov2feat
 
   def _make_id(self, scanId, viewpointId):
     return '{}_{}'.format(scanId, viewpointId)
@@ -308,6 +309,8 @@ class BUTDImageFeatures(Refer360ImageFeatures):
       print('loading center model...')
       fov2cnn = load_cnn_features(
           image_list, cache_root, center_prefix, n_fovs)
+    else:
+      fov2cnn = {}
 
     print('loading BUTD features...', image_list_file)
     fov2feat = load_butd(butd_filename,
@@ -338,6 +341,8 @@ class BUTDImageFeatures(Refer360ImageFeatures):
         pano_fov = self._make_id(pano, idx)
         self.features[pano_fov] = feats
     print('image features for refer360 are prepared!')
+    del fov2feat
+    del fov2cnn
 
   def _make_id(self, scanId, viewpointId):
     return '{}_{}'.format(scanId, viewpointId)
@@ -347,9 +352,9 @@ class BUTDImageFeatures(Refer360ImageFeatures):
     return self.features[long_id]
 
   def get_name(self):
-    name = '_butd'
+    name = 'butd'
     if self.use_object_embeddings:
-      name += 'oe'
+      name += '_oe'
     if self.center_model:
       name += 'CM'+self.center_model
     if self.no_lookahead:
