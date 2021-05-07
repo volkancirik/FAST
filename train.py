@@ -1,3 +1,4 @@
+import paths
 import torch
 from torch import optim
 import json

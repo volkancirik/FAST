@@ -1,3 +1,14 @@
+import os
+import os.path
+import sys
+
+file_path = os.path.dirname(__file__)
+module_path = os.path.abspath(os.path.join(file_path))
+sys.path.append(module_path)
+module_path = os.path.abspath(os.path.join(
+    file_path, '..', '..', 'build_refer360'))
+sys.path.append(module_path)
+
 convolutional_feature_store_paths = {
     'imagenet': 'img_features/imagenet_convolutional',
     'places365': 'img_features/places365_convolutional',
