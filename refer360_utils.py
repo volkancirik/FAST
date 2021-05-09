@@ -460,7 +460,7 @@ def dump_fov_caches(
         n_fovs=240,
         word_embedding_path='./tasks/FAST/data/cc.en.300.vec',
         obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json',
-        cooccurrence_file='/projects1/Matterport3DSimulator/cooccurrence.vg.npy'):
+        cooccurrence_files=[]):
 
   vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name = get_object_dictionaries(
       obj_dict_file, return_all=True)
@@ -473,96 +473,100 @@ def dump_fov_caches(
                        vg2name=vg2name,
                        keys=['boxes', 'objects_id'])
   print('loaded BUTD boxes!', image_list_file)
-
-  cooccurrence_data = np.load(cooccurrence_file,
-                              allow_pickle=True)[()]
-  cooccurrence = cooccurrence_data['cooccurrence']
-  # normalize the counts
-  for idx in range(cooccurrence.shape[0]):
-    sum_count = np.sum(cooccurrence[idx, :])
-    if sum_count > 0:
-      cooccurrence[idx, :] = cooccurrence[idx, :] / sum_count
-    else:
-      cooccurrence[idx, :] = 1.0 / cooccurrence.shape[0]
-
-  prefix = cooccurrence_data['prefix']
-  outfile = 'img_features/refer360_30degrees_{}.tsv'.format(prefix)
-  print('output file:', outfile)
-
-  image_list = [line.strip()
-                for line in open(image_list_file)]
-  pbar = tqdm(image_list)
-
   FIELDNAMES = ['pano_fov', 'features']
-  with open(outfile, 'w') as tsvfile:
-    writer = csv.DictWriter(tsvfile, delimiter='\t', fieldnames=FIELDNAMES)
-    for fname in pbar:
-      pano = fname.split('/')[-1].split('.')[0]
-      for idx in range(n_fovs):
-        pano_fov = '{}_{}'.format(pano, idx)
-        features = np.zeros((9, 300), dtype=np.float32)
 
-        if pano_fov in fov2keys['boxes'] and pano_fov in fov2keys['objects_id']:
-          boxes = fov2keys['boxes'][pano_fov]
-          object_ids = fov2keys['objects_id'][pano_fov]
-          n_boxes = len(boxes)
+  for cooccurrence_file in cooccurrence_files:
 
-          emb_feats = np.zeros((n_boxes, 300), dtype=np.float32)
-          for ii, obj_id in enumerate(object_ids):
-            obj_name = vg2name.get(obj_id, '</s>')
-            emb_feats[ii, :] = w2v.get(obj_name, w2v['</s>'])
-          features[4, :] = np.sum(emb_feats, axis=0)
+    cooccurrence_data = np.load(cooccurrence_file,
+                                allow_pickle=True)[()]
+    cooccurrence = cooccurrence_data['cooccurrence']
+    # normalize the counts
 
-          dir2obj = defaultdict(list)
-          for ii, box in enumerate(boxes):
-            directions = []
-            if box[1] < 120:
-              directions.append('u')
-            elif box[1] > 280:
-              directions.append('d')
-            if box[0] < 120:
-              if directions:
-                directions[0] += 'l'
-              directions.append('l')
-            elif box[0] > 280:
-              if directions:
-                directions[0] += 'r'
-              directions.append('r')
-            for direction in directions:
-              dir2obj[direction] += [ii]
+    for idx in range(cooccurrence.shape[0]):
+      sum_count = np.sum(cooccurrence[idx, :])
+      if sum_count > 0:
+        cooccurrence[idx, :] = cooccurrence[idx, :] / sum_count
+      else:
+        cooccurrence[idx, :] = 1.0 / cooccurrence.shape[0]
 
-          # for each direction in ul, u, ur, l, r, dl, d, dr
-          for direction in dir2obj.keys():
-            indexes = dir2obj[direction]
-            feat_index = DIR2IDX[direction]
-            dir_feats = np.zeros((1, 300), dtype=np.float32)
+    prefix = cooccurrence_data['prefix']
+    outfile = 'img_features/refer360_30degrees_{}.tsv'.format(prefix)
+    print('output file:', outfile)
 
-            # for each object on the edge
-            for index in indexes:
-              o = object_ids[index]
-              name = vg2name.get(o, '</s>')
-              idx = obj_classes.index(name)
+    image_list = [line.strip()
+                  for line in open(image_list_file)]
+    pbar = tqdm(image_list)
 
-              for co_idx in range(cooccurrence.shape[1]):
-                if cooccurrence[idx, co_idx] > 0:
-                  co_name = obj_classes[co_idx]
-                  emb = w2v.get(co_name, w2v['</s>'])
-                  dir_feats += emb * cooccurrence[idx, co_idx]
+    with open(outfile, 'w') as tsvfile:
+      writer = csv.DictWriter(tsvfile, delimiter='\t', fieldnames=FIELDNAMES)
+      for fname in pbar:
+        pano = fname.split('/')[-1].split('.')[0]
+        for idx in range(n_fovs):
+          pano_fov = '{}_{}'.format(pano, idx)
+          features = np.zeros((9, 300), dtype=np.float32)
+
+          if pano_fov in fov2keys['boxes'] and pano_fov in fov2keys['objects_id']:
+            boxes = fov2keys['boxes'][pano_fov]
+            object_ids = fov2keys['objects_id'][pano_fov]
+            n_boxes = len(boxes)
+
+            emb_feats = np.zeros((n_boxes, 300), dtype=np.float32)
+            for ii, obj_id in enumerate(object_ids):
+              obj_name = vg2name.get(obj_id, '</s>')
+              emb_feats[ii, :] = w2v.get(obj_name, w2v['</s>'])
+            features[4, :] = np.sum(emb_feats, axis=0)
+
+            dir2obj = defaultdict(list)
+            for ii, box in enumerate(boxes):
+              directions = []
+              if box[1] < 120:
+                directions.append('u')
+              elif box[1] > 280:
+                directions.append('d')
+              if box[0] < 120:
+                if directions:
+                  directions[0] += 'l'
+                directions.append('l')
+              elif box[0] > 280:
+                if directions:
+                  directions[0] += 'r'
+                directions.append('r')
+              for direction in directions:
+                dir2obj[direction] += [ii]
+
+            # for each direction in ul, u, ur, l, r, dl, d, dr
+            for direction in dir2obj.keys():
+              indexes = dir2obj[direction]
+              feat_index = DIR2IDX[direction]
+              dir_feats = np.zeros((1, 300), dtype=np.float32)
+
+              # for each object on the edge
+              for index in indexes:
+                o = object_ids[index]
+                name = vg2name.get(o, '</s>')
+                idx = obj_classes.index(name)
+
+                for co_idx in range(cooccurrence.shape[1]):
+                  if cooccurrence[idx, co_idx] > 0:
+                    co_name = obj_classes[co_idx]
+                    emb = w2v.get(co_name, w2v['</s>'])
+                    dir_feats += emb * cooccurrence[idx, co_idx]
               features[feat_index, :] = dir_feats
-        encoded = base64.b64encode(features).decode()
-        d = {'pano_fov': pano_fov,
-             'features': encoded}
-        writer.writerow(d)
-
-  print('DONE! bye.')
+          encoded = base64.b64encode(features).decode()
+          d = {'pano_fov': pano_fov,
+               'features': encoded}
+          writer.writerow(d)
+    pbar.close()
+    print('DONE!')
+  print('DONE with all!')
 
 
 if __name__ == '__main__':
   # test_get_nears()
-  get_refer360_stats()
-  get_visualgenome_stats()
-  get_spatialsense_stats()
-  get_wordnet_stats()
+  # get_refer360_stats()
+  # get_visualgenome_stats()
+  # get_spatialsense_stats()
+  # get_wordnet_stats()
   cooccurrence_files = [
       '/projects1/Matterport3DSimulator/cooccurrence.vg_v3.npy',
       '/projects1/Matterport3DSimulator/cooccurrence.wn_v3.npy',
@@ -571,9 +575,8 @@ if __name__ == '__main__':
       '/projects1/Matterport3DSimulator/cooccurrence.gpt3_v3.npy',
       '/projects1/Matterport3DSimulator/cooccurrence.gpt2_v3.npy',
       '/projects1/Matterport3DSimulator/cooccurrence.gpt_v3.npy',
-      '/projects1/Matterport3DSimulator/cooccurrence.gpt3_vg_v3.npy',
       '/projects1/Matterport3DSimulator/cooccurrence.ss_v3.npy',
       '/projects1/Matterport3DSimulator/cooccurrence.r30butd_v3.npy',
   ]
   for cooccurrence_file in cooccurrence_files:
-    dump_fov_caches(cooccurrence_file=cooccurrence_file)
+    dump_fov_caches(cooccurrence_files=cooccurrence_files)
