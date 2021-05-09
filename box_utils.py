@@ -97,24 +97,58 @@ def get_box2box_relationships(box1, box2):
       [x20, y20, x21, y20],
       [x20, y21, x21, y21],
   ]
-  edges = []
-  edgenames = []
+  vedges = []
+  vedgenames = []
   for ii, v1 in enumerate(edges1_v):
     for jj, v2 in enumerate(edges2_v):
-      x, y = (v1[0] + v1[2])/2, (v1[1] + v1[3])/2
-      # TODO: being on the same line if x == v2[0] and x == v2[2]:
-      edges.append(get_line_distance(v2[0], v2[1], v2[2], v2[3], x, y))
-      edgenames.append('v{}->{}'.format(ii, jj))
+      x, y = v1[0], (v1[1] + v1[3])/2
+
+      if x == v2[0]:  # on same vertical line
+        if v1[1] <= v2[1] <= v1[3]:
+          distance = 0
+        elif v1[1] <= v2[3] <= v1[3]:
+          distance = 0
+        elif v2[1] <= v1[1] <= v2[3]:
+          distance = 0
+        elif v2[1] <= v1[3] <= v2[3]:
+          distance = 0
+        else:
+          distance = float('inf')
+      else:
+        distance = get_line_distance(v2[0], v2[1], v2[2], v2[3], x, y)
+      vedges.append(distance)
+      vedgenames.append('v{}->{}'.format(ii, jj))
+
+  hedges = []
+  hedgenames = []
 
   for ii, h1 in enumerate(edges1_h):
     for jj, h2 in enumerate(edges2_h):
-      x, y = (h1[0] + h1[2])/2, (h1[1] + h1[3])/2
-      edges.append(get_line_distance(h2[0], h2[1], h2[2], h2[3], x, y))
-      edgenames.append('h{}->{}'.format(ii, jj))
+      x, y = (h1[0]+h1[2]) / 2, h1[1]
 
-  edge_proximity = np.min(edges)
-  edge_id = np.argmin(edges)
-  return edge_proximity, edgenames[edge_id]
+      if y == h2[1]:  # on same vertical line
+        if h1[0] <= h2[0] <= h1[2]:
+          distance = 0
+        elif h1[0] <= h2[2] <= h1[2]:
+          distance = 0
+        elif h2[0] <= h1[0] <= h2[2]:
+          distance = 0
+        elif h2[0] <= h1[2] <= h2[2]:
+          distance = 0
+        else:
+          distance = float('inf')
+      else:
+        distance = get_line_distance(h2[0], h2[1], h2[2], h2[3], x, y)
+      hedges.append(distance)
+      hedgenames.append('h{}->{}'.format(ii, jj))
+  vedge_proximity = np.min(vedges)
+  vedge_id = np.argmin(vedges)
+  hedge_proximity = np.min(hedges)
+  hedge_id = np.argmin(hedges)
+
+  edge_proximity = vedge_proximity + hedge_proximity
+  edge_name = vedgenames[vedge_id] + hedgenames[hedge_id]
+  return edge_proximity, edge_name
 
 
 def test_box2box():
@@ -124,7 +158,7 @@ def test_box2box():
   print(e_p, e_id)
 
   b1 = [10, 20, 100, 25]
-  b2 = [20, 30, 100, 50]
+  b2 = [20, 26, 100, 50]
   e_p, e_id = get_box2box_relationships(b1, b2)
   print(e_p, e_id)
 
