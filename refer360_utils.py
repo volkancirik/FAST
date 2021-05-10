@@ -10,6 +10,7 @@ import sys
 import csv
 from nltk.corpus import wordnet
 from box_utils import get_boxes2coor_relationships
+from box_utils import get_box2box_relationships
 from box_utils import calculate_iou, calculate_area
 
 file_path = os.path.dirname(__file__)
@@ -111,7 +112,7 @@ def load_cnn_features(image_list, cache_root, feature_prefix, n_fovs):
 def load_butd(butd_filename,
               threshold=0.5,
               w2v=None,
-              objid2name=None,
+              vg2name=None,
               keys=['features']):
   fov2key = {k: {} for k in keys}
 
@@ -149,11 +150,11 @@ def load_butd(butd_filename,
           quit(1)
         if k == 'features':
           feats = item['features'][keep_boxes]
-          if w2v != None and objid2name != None:
+          if w2v != None and vg2name != None:
             emb_feats = np.zeros((feats.shape[0], 300), dtype=np.float32)
             for ii, obj_id in enumerate(obj_ids):
-              obj_name = objid2name.get(obj_id, '</s>')
-            emb_feats[ii, :] = w2v.get(obj_name, w2v['</s>'])
+              obj_name = vg2name.get(obj_id, '</s>')
+              emb_feats[ii, :] = w2v.get(obj_name, w2v['</s>'])
             feats = emb_feats
           feats = np.sum(feats, axis=0)
           fov2key[k][pano_fov] = feats
@@ -174,10 +175,11 @@ def load_vectors(fname, vocab):
   return data
 
 
-def get_object_dictionaries(obj_dict_file):
+def get_object_dictionaries(obj_dict_file,
+                            return_all=False):
   '''Loads object object dictionaries
   idx ->  visual genome
-  visual genome -> idx2
+  visual genome -> idx
   idx -> object classes'''
 
   data = json.load(
@@ -186,38 +188,66 @@ def get_object_dictionaries(obj_dict_file):
   idx2vg = data['idx2vg']
   obj_classes = data['obj_classes']
 
+  if return_all:
+
+    vg2idx = {int(k): int(vg2idx[k]) for k in vg2idx}
+    idx2vg = {int(k): int(idx2vg[k]) for k in idx2vg}
+    obj_classes.append('</s>')
+    vg2idx[1601] = len(obj_classes)-1
+    idx2vg[len(obj_classes)-1] = 1601
+
+    name2vg, name2idx, vg2name = {}, {}, {}
+    for idx in idx2vg:
+      vg_idx = idx2vg[idx]
+      obj_name = obj_classes[idx]
+
+      name2vg[obj_name] = vg_idx
+      name2idx[obj_name] = idx
+      vg2name[vg_idx] = obj_name
+
+    return vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name
   return vg2idx, idx2vg, obj_classes
 
 
 def get_nears(boxes):
   n_boxes = len(boxes)
   inside = np.zeros((n_boxes, n_boxes))
-  centers = np.zeros((n_boxes, n_boxes))
+  center = np.zeros((n_boxes, n_boxes))
+  edge = np.ones((n_boxes, n_boxes))*400
   iou = np.zeros((n_boxes, n_boxes))
   for ii, b1 in enumerate(boxes):
-    center = [(b1[1] + b1[3])/2, (b1[0] + b1[2])/2]
-    r = get_boxes2coor_relationships(boxes[ii:], center)
+    c = [(b1[1] + b1[3])/2, (b1[0] + b1[2])/2]
+    r = get_boxes2coor_relationships(boxes[ii:], c)
     ious = []
+    edges = []
     for jj, b2 in enumerate(boxes[ii:]):
       if ii == jj:
         area = 0
       else:
         area = calculate_iou(b1, b2)
       ious += [area]
+      e, _ = get_box2box_relationships(b1, b2)
+      edges += [e]
     inside[ii, ii:] = r[0]
-    centers[ii, ii:] = r[1]
+    center[ii, ii:] = r[1]
     iou[ii, ii:] = ious
+    edge[ii, ii:] = edges
 
   nears = []
   for ii in range(n_boxes):
     for jj in range(ii+1, n_boxes):
       near = False
-      if iou[ii, jj] > 0 or centers[ii, jj] < 150:
+      if iou[ii, jj] > 0.0 or center[ii, jj] < 100:
         near = True
-      # add other conditions to update near
+      else:
+        if edge[ii, jj] < 20:
+          near = True
+        if center[ii, jj] < 40:
+          near = True
+        # add other conditions to update near
       if near:
         nears.append([ii, jj])
-  return nears, inside, centers, iou
+  return nears, inside, center, iou, edge
 
 
 def test_get_nears():
@@ -230,30 +260,28 @@ def test_get_nears():
                     [175.26164,  361.52023,  244.46167,  398.51883]])
   object_ids = [743, 177, 72, 99, 781, 781]
 
-  name2objid, objid2name = {}, {}
-  vg2idx, idx2vg, obj_classes = get_object_dictionaries(
-      obj_dict_file)
-  for idx in idx2vg:
-    objid2name[idx2vg[idx]] = obj_classes[int(idx)]
-    name2objid[obj_classes[int(idx)]] = idx2vg[idx]
-  name2objid['</s>'] = len(objid2name)
-  obj_classes.append('</s>')
-  objid2name[len(objid2name)] = '</s>'
-  print('# of objects:', len(objid2name), len(obj_classes))
-  nears, inside, centers, iou = get_nears(boxes)
-  print(inside)
+  vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name = get_object_dictionaries(
+      obj_dict_file, return_all=True)
+  print('# of objects:', len(vg2name), len(obj_classes))
+  nears, inside, centers, iou, edge = get_nears(boxes)
+  print('inside\n', inside)
   print('_'*20)
-  print(centers)
+  print('centers\n', centers)
   print('_'*20)
-  print(iou)
+  print('iou\n', iou)
   print('_'*20)
-  n_objects = len(objid2name)
+  print('edge\n', edge)
+  print('_'*20)
+  n_objects = len(vg2name)
   cooccurrence = np.zeros((n_objects, n_objects))
   for near in nears:
     o1, o2 = object_ids[near[0]], object_ids[near[1]]
-    name1, name2 = objid2name.get(o1, '</s>'), objid2name.get(o2, '</s>')
+    name1, name2 = vg2name.get(o1, '</s>'), vg2name.get(o2, '</s>')
     idx1, idx2 = obj_classes.index(name1), obj_classes.index(name2)
-    print(near[0], near[1], o1, o2, idx1, idx2, name1, name2)
+    idx3, idx4 = vg2idx.get(
+        o1, name2idx['</s>']), vg2idx.get(o2, name2idx['</s>'])
+    print('nears:', near[0], near[1], o1, o2,
+          idx1, idx3, idx2, idx4, name1, name2)
     cooccurrence[idx1, idx2] += 1
     cooccurrence[idx2, idx1] += 1
   print(cooccurrence[idx1, :])
@@ -273,23 +301,15 @@ def get_refer360_stats(
         n_fovs=240,
         obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json'):
 
-  name2objid, objid2name = {}, {}
-  vg2idx, idx2vg, obj_classes = get_object_dictionaries(
-      obj_dict_file)
-  for idx in idx2vg:
-    objid2name[idx2vg[idx]] = obj_classes[int(idx)]
-    name2objid[obj_classes[int(idx)]] = idx2vg[idx]
-
-  name2objid['</s>'] = len(objid2name)
-  objid2name[len(objid2name)] = '</s>'
-  obj_classes.append('</s>')
+  vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name = get_object_dictionaries(
+      obj_dict_file, return_all=True)
 
   print('loading BUTD boxes...', butd_filename)
   fov2keys = load_butd(butd_filename,
-                       objid2name=objid2name,
+                       vg2name=vg2name,
                        keys=['boxes', 'objects_id'])
 
-  n_objects = len(objid2name)
+  n_objects = len(vg2name)
   cooccurrence = np.zeros((n_objects, n_objects))
   print('loaded BUTD boxes!', image_list_file)
   print('{}x{} cooccurrence matrix will be created...'.format(n_objects, n_objects))
@@ -304,18 +324,18 @@ def get_refer360_stats(
         continue
       boxes = fov2keys['boxes'][pano_fov]
       object_ids = fov2keys['objects_id'][pano_fov]
-      nears, inside, centers, iou = get_nears(boxes)
+      nears, inside, centers, iou, edge = get_nears(boxes)
       for near in nears:
         o1, o2 = object_ids[near[0]], object_ids[near[1]]
-        name1, name2 = objid2name.get(o1, '</s>'), objid2name.get(o2, '</s>')
+        name1, name2 = vg2name.get(o1, '</s>'), vg2name.get(o2, '</s>')
         idx1, idx2 = obj_classes.index(name1), obj_classes.index(name2)
         cooccurrence[idx1, idx2] += 1
         cooccurrence[idx2, idx1] += 1
   d = {'method': 'refer360_30degrees_butd_36obj',
-       'prefix': 'r30butd',
+       'prefix': 'r30butd_v3',
        'butd_filename': butd_filename,
        'cooccurrence': cooccurrence}
-  np.save('cooccurrence.r30butd.npy', d)
+  np.save('cooccurrence.r30butd_v3.npy', d)
   print('DONE! bye.')
 
 
@@ -325,16 +345,9 @@ def get_spatialsense_stats(
 
   anns = json.load(open(spatialsense_annotations, 'r'))
 
-  name2objid, objid2name = {}, {}
-  vg2idx, idx2vg, obj_classes = get_object_dictionaries(
-      obj_dict_file)
-  for idx in idx2vg:
-    objid2name[idx2vg[idx]] = obj_classes[int(idx)]
-    name2objid[obj_classes[int(idx)]] = idx2vg[idx]
-  name2objid['</s>'] = len(objid2name)
-  obj_classes.append('</s>')
-  objid2name[len(objid2name)] = '</s>'
-  n_objects = len(objid2name)
+  vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name = get_object_dictionaries(
+      obj_dict_file, return_all=True)
+  n_objects = len(vg2name)
 
   print('{}x{} cooccurrence matrix will be created...'.format(n_objects, n_objects))
   cooccurrence = np.zeros((n_objects, n_objects))
@@ -342,32 +355,32 @@ def get_spatialsense_stats(
   for imgs in pbar:
 
     for rel in imgs['annotations']:
-      name1 = rel['object']['name']
-      name2 = rel['subject']['name']
+      name1 = rel['object']['name'].lower()
+      name2 = rel['subject']['name'].lower()
       box1 = [rel['object']['bbox'][0], rel['object']['bbox'][1], rel['object']['bbox']
               [0]+rel['object']['bbox'][2], rel['object']['bbox'][1]+rel['object']['bbox'][3]]
       box2 = [rel['subject']['bbox'][0], rel['subject']['bbox'][1], rel['subject']['bbox']
               [0]+rel['subject']['bbox'][2], rel['subject']['bbox'][1]+rel['subject']['bbox'][3]]
       area1 = calculate_area(box1)
       area2 = calculate_area(box2)
-      if name1 not in name2objid or area1 < 20:  # arbitrary number
+      if name1 not in name2vg or area1 < 20:  # arbitrary number
         continue
-      if name2 not in name2objid or area2 < 20:  # arbitrary number
+      if name2 not in name2vg or area2 < 20:  # arbitrary number
         continue
 
       idx1 = obj_classes.index(name1)
       idx2 = obj_classes.index(name2)
       object_ids, boxes = [idx1, idx2], [box1, box2]
-      nears, inside, centers, iou = get_nears(boxes)
+      nears, inside, centers, iou, _ = get_nears(boxes)
       for near in nears:
         idx1, idx2 = object_ids[near[0]], object_ids[near[1]]
         cooccurrence[idx1, idx2] += 1
         cooccurrence[idx2, idx1] += 1
 
   d = {'method': 'spatialsense',
-       'prefix': 'ss',
+       'prefix': 'ss_v3',
        'cooccurrence': cooccurrence}
-  np.save('cooccurrence.ss.npy', d)
+  np.save('cooccurrence.ss_v3.npy', d)
   print('DONE! bye.')
 
 
@@ -377,16 +390,9 @@ def get_visualgenome_stats(
 
   objects = json.load(open(visualgenome_objects, 'r'))
 
-  name2objid, objid2name = {}, {}
-  vg2idx, idx2vg, obj_classes = get_object_dictionaries(
-      obj_dict_file)
-  for idx in idx2vg:
-    objid2name[idx2vg[idx]] = obj_classes[int(idx)]
-    name2objid[obj_classes[int(idx)]] = idx2vg[idx]
-  name2objid['</s>'] = len(objid2name)
-  obj_classes.append('</s>')
-  objid2name[len(objid2name)] = '</s>'
-  n_objects = len(objid2name)
+  vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name = get_object_dictionaries(
+      obj_dict_file, return_all=True)
+  n_objects = len(vg2name)
 
   print('{}x{} cooccurrence matrix will be created...'.format(n_objects, n_objects))
   cooccurrence = np.zeros((n_objects, n_objects))
@@ -397,21 +403,21 @@ def get_visualgenome_stats(
       name = obj['names'][0]
       box = [obj['x'], obj['y'], obj['x']+obj['w'], obj['y']+obj['h']]
       area = calculate_area(box)
-      if name not in name2objid or area < 20:  # arbitrary number
+      if name not in name2vg or area < 20:  # arbitrary number
         continue
       idx = obj_classes.index(name)
       object_ids.append(idx)
       boxes.append(box)
-    nears, inside, centers, iou = get_nears(boxes)
+    nears, inside, centers, iou, _ = get_nears(boxes)
     for near in nears:
       idx1, idx2 = object_ids[near[0]], object_ids[near[1]]
       cooccurrence[idx1, idx2] += 1
       cooccurrence[idx2, idx1] += 1
 
   d = {'method': 'visualgenome v1.4',
-       'prefix': 'vg',
+       'prefix': 'vg_v3',
        'cooccurrence': cooccurrence}
-  np.save('cooccurrence.vg.npy', d)
+  np.save('cooccurrence.vg_v3.npy', d)
   print('DONE! bye.')
 
 
@@ -427,21 +433,14 @@ def wordnet_similarity(word1, word2):
 
 def get_wordnet_stats(obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json'):
 
-  name2objid, objid2name = {}, {}
-  vg2idx, idx2vg, obj_classes = get_object_dictionaries(
-      obj_dict_file)
-  for idx in idx2vg:
-    objid2name[idx2vg[idx]] = obj_classes[int(idx)]
-    name2objid[obj_classes[int(idx)]] = idx2vg[idx]
-  name2objid['</s>'] = len(objid2name)
-  obj_classes.append('</s>')
-  objid2name[len(objid2name)] = '</s>'
-  n_objects = len(objid2name)
+  vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name = get_object_dictionaries(
+      obj_dict_file, return_all=True)
+  n_objects = len(vg2name)
 
   print('{}x{} cooccurrence matrix will be created...'.format(n_objects, n_objects))
   cooccurrence = np.zeros((n_objects, n_objects))
-  for name1 in name2objid.keys():
-    for name2 in name2objid.keys():
+  for name1 in name2vg.keys():
+    for name2 in name2vg.keys():
       sim_score = wordnet_similarity(name1, name2)
       idx1 = obj_classes.index(name1)
       idx2 = obj_classes.index(name2)
@@ -449,9 +448,9 @@ def get_wordnet_stats(obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.al
       cooccurrence[idx2, idx1] = sim_score
 
   d = {'method': 'wordnet similarity',
-       'prefix': 'wn',
+       'prefix': 'wn_v3',
        'cooccurrence': cooccurrence}
-  np.save('cooccurrence.wn.npy', d)
+  np.save('cooccurrence.wn_v3.npy', d)
   print('DONE! bye.')
 
 
@@ -461,121 +460,105 @@ def dump_fov_caches(
         n_fovs=240,
         word_embedding_path='./tasks/FAST/data/cc.en.300.vec',
         obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json',
-        cooccurrence_file='/projects1/Matterport3DSimulator/cooccurrence.vg.npy'):
+        cooccurrence_files=[]):
 
-  name2objid, objid2name = {}, {}
-  vg2idx, idx2vg, obj_classes = get_object_dictionaries(
-      obj_dict_file)
-  for idx in idx2vg:
-    objid2name[idx2vg[idx]] = obj_classes[int(idx)]
-    name2objid[obj_classes[int(idx)]] = idx2vg[idx]
+  vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name = get_object_dictionaries(
+      obj_dict_file, return_all=True)
 
-  name2objid['</s>'] = len(objid2name)
-  objid2name[len(objid2name)] = '</s>'
-  obj_classes.append('</s>')
   print('loading w2v...', word_embedding_path)
-  w2v = load_vectors(word_embedding_path, name2objid)
+  w2v = load_vectors(word_embedding_path, name2vg)
 
   print('loading BUTD boxes...', butd_filename)
   fov2keys = load_butd(butd_filename,
-                       objid2name=objid2name,
+                       vg2name=vg2name,
                        keys=['boxes', 'objects_id'])
   print('loaded BUTD boxes!', image_list_file)
-
-  cooccurrence_data = np.load(cooccurrence_file,
-                              allow_pickle=True)[()]
-  cooccurrence = cooccurrence_data['cooccurrence']
-  # normalize the counts
-  for idx in range(cooccurrence.shape[0]):
-    sum_count = np.sum(cooccurrence[idx, :])
-    if sum_count > 0:
-      cooccurrence[idx, :] = cooccurrence[idx, :] / sum_count
-    else:
-      cooccurrence[idx, :] = 1.0 / cooccurrence.shape[0]
-
-  prefix = cooccurrence_data['prefix']
-  outfile = 'img_features/refer360_30degrees_{}.tsv'.format(prefix)
-  print('output file:', outfile)
-
-  image_list = [line.strip()
-                for line in open(image_list_file)]
-  pbar = tqdm(image_list)
-
   FIELDNAMES = ['pano_fov', 'features']
-  with open(outfile, 'w') as tsvfile:
-    writer = csv.DictWriter(tsvfile, delimiter='\t', fieldnames=FIELDNAMES)
-    for fname in pbar:
-      pano = fname.split('/')[-1].split('.')[0]
-      for idx in range(n_fovs):
-        pano_fov = '{}_{}'.format(pano, idx)
-        features = np.zeros((9, 300), dtype=np.float32)
 
-        if pano_fov in fov2keys['boxes'] and pano_fov in fov2keys['objects_id']:
-          boxes = fov2keys['boxes'][pano_fov]
-          object_ids = fov2keys['objects_id'][pano_fov]
-          n_boxes = len(boxes)
+  for cooccurrence_file in cooccurrence_files:
 
-          emb_feats = np.zeros((n_boxes, 300), dtype=np.float32)
-          for ii, obj_id in enumerate(object_ids):
-            obj_name = objid2name.get(obj_id, '</s>')
-            emb_feats[ii, :] = w2v.get(obj_name, w2v['</s>'])
-          features[4, :] = np.sum(emb_feats, axis=0)
+    cooccurrence_data = np.load(cooccurrence_file,
+                                allow_pickle=True)[()]
+    cooccurrence = cooccurrence_data['cooccurrence']
+    # normalize the counts
 
-          dir2obj = defaultdict(list)
-          for ii, box in enumerate(boxes):
-            directions = []
-            if box[1] < 120:
-              directions.append('u')
-            elif box[1] > 280:
-              directions.append('d')
-            if box[0] < 120:
-              if directions:
-                directions[0] += 'l'
-              directions.append('l')
-            elif box[0] > 280:
-              if directions:
-                directions[0] += 'r'
-              directions.append('r')
-            for direction in directions:
-              dir2obj[direction] += [ii]
+    for idx in range(cooccurrence.shape[0]):
+      sum_count = np.sum(cooccurrence[idx, :])
+      if sum_count > 0:
+        cooccurrence[idx, :] = cooccurrence[idx, :] / sum_count
+      else:
+        cooccurrence[idx, :] = 1.0 / cooccurrence.shape[0]
 
-          # for each direction in ul, u, ur, l, r, dl, d, dr
-          for direction in dir2obj.keys():
-            indexes = dir2obj[direction]
-            feat_index = DIR2IDX[direction]
-            dir_feats = np.zeros((1, 300), dtype=np.float32)
+    prefix = cooccurrence_data['prefix']
+    outfile = 'img_features/refer360_30degrees_{}.tsv'.format(prefix)
+    print('output file:', outfile)
 
-            # for each object on the edge
-            for index in indexes:
-              o = object_ids[index]
-              name = objid2name.get(o, '</s>')
-              idx = obj_classes.index(name)
+    image_list = [line.strip()
+                  for line in open(image_list_file)]
+    pbar = tqdm(image_list)
 
-              for co_idx in range(cooccurrence.shape[1]):
-                if cooccurrence[idx, co_idx] > 0:
-                  co_name = obj_classes[co_idx]
-                  emb = w2v.get(co_name, w2v['</s>'])
-                  dir_feats += emb * cooccurrence[idx, co_idx]
+    with open(outfile, 'w') as tsvfile:
+      writer = csv.DictWriter(tsvfile, delimiter='\t', fieldnames=FIELDNAMES)
+      for fname in pbar:
+        pano = fname.split('/')[-1].split('.')[0]
+        for idx in range(n_fovs):
+          pano_fov = '{}_{}'.format(pano, idx)
+          features = np.zeros((9, 300), dtype=np.float32)
+
+          if pano_fov in fov2keys['boxes'] and pano_fov in fov2keys['objects_id']:
+            boxes = fov2keys['boxes'][pano_fov]
+            object_ids = fov2keys['objects_id'][pano_fov]
+            n_boxes = len(boxes)
+
+            emb_feats = np.zeros((n_boxes, 300), dtype=np.float32)
+            for ii, obj_id in enumerate(object_ids):
+              obj_name = vg2name.get(obj_id, '</s>')
+              emb_feats[ii, :] = w2v.get(obj_name, w2v['</s>'])
+            features[4, :] = np.sum(emb_feats, axis=0)
+
+            dir2obj = defaultdict(list)
+            for ii, box in enumerate(boxes):
+              directions = []
+              if box[1] < 120:
+                directions.append('u')
+              elif box[1] > 280:
+                directions.append('d')
+              if box[0] < 120:
+                if directions:
+                  directions[0] += 'l'
+                directions.append('l')
+              elif box[0] > 280:
+                if directions:
+                  directions[0] += 'r'
+                directions.append('r')
+              for direction in directions:
+                dir2obj[direction] += [ii]
+
+            # for each direction in ul, u, ur, l, r, dl, d, dr
+            for direction in dir2obj.keys():
+              indexes = dir2obj[direction]
+              feat_index = DIR2IDX[direction]
+              dir_feats = np.zeros((1, 300), dtype=np.float32)
+
+              # for each object on the edge
+              for index in indexes:
+                o = object_ids[index]
+                name = vg2name.get(o, '</s>')
+                idx = obj_classes.index(name)
+
+                for co_idx in range(cooccurrence.shape[1]):
+                  if cooccurrence[idx, co_idx] > 0:
+                    co_name = obj_classes[co_idx]
+                    emb = w2v.get(co_name, w2v['</s>'])
+                    dir_feats += emb * cooccurrence[idx, co_idx]
               features[feat_index, :] = dir_feats
-        encoded = base64.b64encode(features).decode()
-        d = {'pano_fov': pano_fov,
-             'features': encoded}
-        writer.writerow(d)
-
-  # FIELDNAMES = ['pano_fov', 'features']
-  # with open(outfile) as f:
-  #   reader = csv.DictReader(f, FIELDNAMES, delimiter='\t')
-  #   for i, item in enumerate(reader):
-  #     decode_config = [
-  #         ('features', (boxes, -1), np.float32),
-  #     ]
-  #     for key, shape, dtype in decode_config:
-  #       item[key] = np.frombuffer(
-  #           base64.decodebytes(item[key].encode()), dtype=dtype).reshape(9, 300)
-  #     pano_fov = item['pano_fov']
-  #     features = item['features']
-
-  print('DONE! bye.')
+          encoded = base64.b64encode(features).decode()
+          d = {'pano_fov': pano_fov,
+               'features': encoded}
+          writer.writerow(d)
+    pbar.close()
+    print('DONE!')
+  print('DONE with all!')
 
 
 if __name__ == '__main__':
@@ -585,10 +568,15 @@ if __name__ == '__main__':
   # get_spatialsense_stats()
   # get_wordnet_stats()
   cooccurrence_files = [
-      #    '/projects1/Matterport3DSimulator/cooccurrence.vg.npy',
-      '/projects1/Matterport3DSimulator/cooccurrence.wn.npy',
-      '/projects1/Matterport3DSimulator/cooccurrence.ss.npy',
-      '/projects1/Matterport3DSimulator/cooccurrence.r30butd.npy',
-      '/projects1/Matterport3DSimulator/cooccurrence.gpt3_vg.npy', ]
+      '/projects1/Matterport3DSimulator/cooccurrence.vg_v3.npy',
+      '/projects1/Matterport3DSimulator/cooccurrence.wn_v3.npy',
+      '/projects1/Matterport3DSimulator/cooccurrence.ctrl_v3.npy',
+      '/projects1/Matterport3DSimulator/cooccurrence.xlm_v3.npy',
+      '/projects1/Matterport3DSimulator/cooccurrence.gpt3_v3.npy',
+      '/projects1/Matterport3DSimulator/cooccurrence.gpt2_v3.npy',
+      '/projects1/Matterport3DSimulator/cooccurrence.gpt_v3.npy',
+      '/projects1/Matterport3DSimulator/cooccurrence.ss_v3.npy',
+      '/projects1/Matterport3DSimulator/cooccurrence.r30butd_v3.npy',
+  ]
   for cooccurrence_file in cooccurrence_files:
-    dump_fov_caches(cooccurrence_file=cooccurrence_file)
+    dump_fov_caches(cooccurrence_files=cooccurrence_files)
