@@ -144,10 +144,7 @@ class Refer360ImageFeatures(object):
                                  choices=['resnet', ''],
                                  default='')
     argument_parser.add_argument('--refer360_prior_method',
-                                 default='vg',
-                                 choices=['vg', 'wn', 'ss',
-                                          'r30butd', 'gpt3_vg'],
-                                 )
+                                 default='')
     argument_parser.add_argument(
         '--use_object_embeddings', action='store_true')
 
