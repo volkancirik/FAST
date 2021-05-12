@@ -1,11 +1,11 @@
 ''' Batched Room-to-Room navigation environment '''
+import paths
 from torch.autograd import Variable
 import torch
 from utils import load_datasets, load_nav_graphs, structured_map, decode_base64, k_best_indices, try_cuda, spatial_feature_from_bbox
 from collections import namedtuple, defaultdict
 import itertools
 import pickle
-import paths
 import os.path
 import functools
 import networkx as nx

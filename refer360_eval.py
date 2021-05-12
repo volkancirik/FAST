@@ -1,5 +1,4 @@
 ''' Evaluation of agent trajectories '''
-
 import os
 import json
 from collections import defaultdict
@@ -58,7 +57,7 @@ class Refer360Evaluation(object):
       item['gt_actions_path'] = item['path']
       self.gt[item['path_id']] = item
       self.scans.append(item['scan'])
-      if prefix == 'refer360':
+      if prefix in ['refer360', 'touchdown']:
         self.instr_ids += ['%s_%d' % (item['path_id'], i) for i in
                            range(len(item['instructions']))]
       else:
@@ -420,10 +419,17 @@ def eval_simple_agents(args):
                  Refer360ImageFeatures.VFOV)
   sim.load_maps()
 
-  for split in ['val_seen',
-                'val_unseen',
-                'test_unseen',
-                'test_seen']:
+  # TODO add touchdown
+  if args.prefix == 'refer360':
+    splits = ['val_seen',
+              'val_unseen',
+              'test_unseen',
+              'test_seen']
+  elif args.prefix == 'touchdown':
+    splits = ['dev', 'test']
+  else:
+    raise NotImplementedError()
+  for split in splits:
     env = Refer360Batch(img_features,
                         splits=[split],
                         args=args)
@@ -491,9 +497,9 @@ def eval_outfiles(args):
 if __name__ == '__main__':
   from train import make_arg_parser
   # TODO: take function to run as argument
-  parser = make_arg_parser()
-  parser.add_argument('--results_path', type=str,
-                      default='')
+  # parser = make_arg_parser()
+  # parser.add_argument('--results_path', type=str,
+  #                     default='')
 
-  utils.run(parser, eval_outfiles)
-  # utils.run(make_arg_parser(), eval_simple_agents)
+  # utils.run(parser, eval_outfiles)
+  utils.run(make_arg_parser(), eval_simple_agents)

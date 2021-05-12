@@ -472,7 +472,9 @@ r2r2Refer360 = {'val_seen': 'validation.seen',
                 'val_unseen': 'validation.unseen',
                 'test_seen': 'test.seen',
                 'test_unseen': 'test.unseen',
-                'train': 'train'
+                'train': 'train',
+                'dev': 'dev',
+                'test': 'test'
                 }
 
 

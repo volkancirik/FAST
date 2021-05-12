@@ -457,7 +457,7 @@ def get_wordnet_stats(obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.al
 def dump_fov_caches(
         butd_filename='./img_features/refer360_30degrees_obj36.tsv',
         image_list_file='./refer360_data/imagelist.txt',
-        n_fovs=240,
+        n_fovs=60,
         word_embedding_path='./tasks/FAST/data/cc.en.300.vec',
         obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json',
         cooccurrence_files=[]):
@@ -515,8 +515,8 @@ def dump_fov_caches(
               obj_name = vg2name.get(obj_id, '</s>')
               emb_feats[ii, :] = w2v.get(obj_name, w2v['</s>'])
             features[4, :] = np.sum(emb_feats, axis=0)
-
             dir2obj = defaultdict(list)
+
             for ii, box in enumerate(boxes):
               directions = []
               if box[1] < 120:
@@ -561,22 +561,119 @@ def dump_fov_caches(
   print('DONE with all!')
 
 
+def dump_fov_stats(
+        butd_filename='./img_features/refer360_30degrees_obj36.tsv',
+        image_list_file='./refer360_data/imagelist.txt',
+        n_fovs=60,
+        word_embedding_path='./tasks/FAST/data/cc.en.300.vec',
+        obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json',
+        stats_files=[],
+        methods=[],
+        outfiles=[]):
+
+  vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name = get_object_dictionaries(
+      obj_dict_file, return_all=True)
+  n_objects = len(vg2name)
+
+  print('loading w2v...', word_embedding_path)
+  w2v = load_vectors(word_embedding_path, name2vg)
+
+  print('loading BUTD boxes...', butd_filename)
+  fov2keys = load_butd(butd_filename,
+                       vg2name=vg2name,
+                       keys=['boxes', 'objects_id'])
+  print('loaded BUTD boxes!', image_list_file)
+
+  FIELDNAMES = ['pano_fov', 'features']
+
+  assert len(stats_files) == len(outfiles)
+  assert len(methods) == len(outfiles)
+  for stats_file, outfile, method in zip(stats_files, outfiles, methods):
+    stats_data = np.load(stats_file,
+                         allow_pickle=True)[()][method]
+
+    print('output file:', outfile)
+
+    image_list = [line.strip()
+                  for line in open(image_list_file)]
+    pbar = tqdm(image_list)
+
+    with open(outfile, 'w') as tsvfile:
+      writer = csv.DictWriter(tsvfile, delimiter='\t', fieldnames=FIELDNAMES)
+      for fname in pbar:
+        pano = fname.split('/')[-1].split('.')[0]
+        for idx in range(n_fovs):
+          pano_fov = '{}_{}'.format(pano, idx)
+          features = np.zeros((9, 300), dtype=np.float32)
+
+          if pano_fov in fov2keys['boxes'] and pano_fov in fov2keys['objects_id']:
+            boxes = fov2keys['boxes'][pano_fov]
+            object_ids = fov2keys['objects_id'][pano_fov]
+            n_boxes = len(boxes)
+
+            emb_feats = np.zeros((n_boxes, 300), dtype=np.float32)
+            for ii, obj_id in enumerate(object_ids):
+              obj_name = vg2name.get(obj_id, '</s>')
+              emb_feats[ii, :] = w2v.get(obj_name, w2v['</s>'])
+            features[4, :] = np.sum(emb_feats, axis=0)
+
+            if method == 'all_regions':
+              stats = stats_data['navigation']
+            else:
+              stats = stats_data[idx]['navigation']
+
+            for direction in stats.keys():
+              row = stats[direction]
+              feat_index = DIR2IDX[direction]
+              dir_feats = np.zeros((1, 300), dtype=np.float32)
+
+              for co_idx in range(n_objects):
+                if row[co_idx] > 0:
+                  co_name = obj_classes[co_idx]
+                  emb = w2v.get(co_name, w2v['</s>'])
+                  dir_feats += emb * row[co_idx]
+              features[feat_index, :] = dir_feats
+          encoded = base64.b64encode(features).decode()
+          d = {'pano_fov': pano_fov,
+               'features': encoded}
+          writer.writerow(d)
+    pbar.close()
+    print('DONE!')
+  print('DONE with all!')
+
+
 if __name__ == '__main__':
-  # test_get_nears()
+  test_get_nears()
   # get_refer360_stats()
   # get_visualgenome_stats()
   # get_spatialsense_stats()
   # get_wordnet_stats()
   cooccurrence_files = [
-      '/projects1/Matterport3DSimulator/cooccurrence.vg_v3.npy',
-      '/projects1/Matterport3DSimulator/cooccurrence.wn_v3.npy',
-      '/projects1/Matterport3DSimulator/cooccurrence.ctrl_v3.npy',
-      '/projects1/Matterport3DSimulator/cooccurrence.xlm_v3.npy',
-      '/projects1/Matterport3DSimulator/cooccurrence.gpt3_v3.npy',
-      '/projects1/Matterport3DSimulator/cooccurrence.gpt2_v3.npy',
-      '/projects1/Matterport3DSimulator/cooccurrence.gpt_v3.npy',
-      '/projects1/Matterport3DSimulator/cooccurrence.ss_v3.npy',
-      '/projects1/Matterport3DSimulator/cooccurrence.r30butd_v3.npy',
+      '/projects1/Matterport3DSimulator/cooccurrence.gptneo_v3.npy',
+      # '/projects1/Matterport3DSimulator/cooccurrence.vg_v3.npy',
+      # '/projects1/Matterport3DSimulator/cooccurrence.wn_v3.npy',
+      # '/projects1/Matterport3DSimulator/cooccurrence.ctrl_v3.npy',
+      # '/projects1/Matterport3DSimulator/cooccurrence.xlm_v3.npy',
+      # '/projects1/Matterport3DSimulator/cooccurrence.gpt3_v3.npy',
+      # '/projects1/Matterport3DSimulator/cooccurrence.gpt2_v3.npy',
+      # '/projects1/Matterport3DSimulator/cooccurrence.gpt_v3.npy',
+      # '/projects1/Matterport3DSimulator/cooccurrence.ss_v3.npy',
+      # '/projects1/Matterport3DSimulator/cooccurrence.r30butd_v3.npy',
   ]
   for cooccurrence_file in cooccurrence_files:
     dump_fov_caches(cooccurrence_files=cooccurrence_files)
+  # stats_files = [
+  #     '/projects1/Matterport3DSimulator/cached30degrees_stats.npy',
+  #     '/projects1/Matterport3DSimulator/cached30degrees_stats.npy'
+  # ]
+  # outfiles = [
+  #     'img_features/refer360_30degrees_r30statsall_v3.tsv',
+  #     'img_features/refer360_30degrees_r30statsfov2reg_v3.tsv',
+  # ]
+  # methods = [
+  #     'all_regions',
+  #     'fov2regions'
+  # ]
+  # dump_fov_stats(stats_files=stats_files,
+  #                outfiles=outfiles,
+  #                methods=methods)

@@ -313,15 +313,15 @@ def run(arg_parser, entry_function):
   args = arg_parser.parse_args()
   args.image_list_file = os.path.join(args.refer360_root, 'imagelist.txt')
   args.butd_filename = os.path.join(
-      'img_features', 'refer360_{}degrees_obj36.tsv'.format(args.angle_inc))
+      'img_features', '{}_{}degrees_obj36.tsv'.format(args.prefix, args.angle_inc))
   args.refer360_data = os.path.join(args.refer360_root,
                                     'continuous_grounding_{}degrees'.format(args.angle_inc))
   args.cache_root = os.path.join(args.refer360_root,
                                  'cached_data_{}degrees'.format(args.angle_inc))
   args.prior_prefix = os.path.join(
-      'img_features', 'refer360_{}degrees_'.format(args.angle_inc))
+      'img_features', '{}_{}degrees_'.format(args.prefix, args.angle_inc))
 
-  if args.prefix in ['refer360']:
+  if args.prefix in ['refer360', 'touchdown']:
     args.env = 'refer360'
     args.metrics = 'fov_accuracy'
     if args.blind:

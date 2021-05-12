@@ -219,7 +219,7 @@ def make_more_train_env(args, train_vocab_path, train_splits):
   if args.env == 'r2r':
     EnvBatch = R2RBatch
     ImgFeatures = ImageFeatures
-  elif args.env == 'refer360':
+  elif args.env in ['refer360']:
     EnvBatch = Refer360Batch
     ImgFeatures = Refer360ImageFeatures
 
@@ -332,7 +332,7 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
     ImgFeatures = ImageFeatures
     Eval = eval.Evaluation
     env_sim = None
-  elif args.env == 'refer360':
+  elif args.env in ['refer360']:
     EnvBatch = Refer360Batch
     ImgFeatures = Refer360ImageFeatures
     Eval = refer360_eval.Refer360Evaluation
@@ -380,9 +380,16 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
 
 
 def train_setup(args, train_splits=['train']):
-  val_splits = ['val_seen', 'val_unseen']
-  if args.use_test_set:
+  if args.prefix in ['refer360', 'r2r', 'R2R', 'REVERIE']:
     val_splits = ['val_seen', 'val_unseen']
+  elif args.prefix in ['touchdown']:
+    val_splits = ['dev']
+  else:
+    raise NotImplementedError()
+
+  if args.use_test_set:
+    raise NotImplementedError()
+#    val_splits = ['val_seen', 'val_unseen']
 #    val_splits = ['test_seen','test_unseen']
   if args.debug:
     args.log_every = 3
@@ -411,15 +418,6 @@ def train_setup(args, train_splits=['train']):
     return agent, train_env, val_envs, pretrain_env
   else:
     return agent, train_env, val_envs
-
-# Test set prediction will be handled separately
-# def test_setup(args):
-#     train_env, test_envs, encoder, decoder = make_env_and_models(
-#         args, TRAINVAL_VOCAB, ['train', 'val_seen', 'val_unseen'], ['test'])
-#     agent = Seq2SeqAgent(
-#         None, '', encoder, decoder, max_episode_len,
-#         max_instruction_length=MAX_INPUT_LENGTH)
-#     return agent, train_env, test_envs
 
 
 def train_val(args):
