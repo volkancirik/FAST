@@ -89,9 +89,9 @@ def build_oracle_embedding(adj_loc_list, gt_viewpoint_idx):
 
 def load_cnn_features(image_list, cache_root, feature_prefix, n_fovs):
 
+  print('cached features root:', cache_root)
   print('loading cnn features with prefix:', feature_prefix)
   pbar = tqdm(image_list)
-  print('cached features root:', cache_root)
   fov2feat = {}
   for fname in pbar:
     pano = fname.split('/')[-1].split('.')[0]

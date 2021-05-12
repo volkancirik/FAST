@@ -422,13 +422,12 @@ def eval_simple_agents(args):
   # TODO add touchdown
   if args.prefix == 'refer360':
     splits = ['val_seen',
-              'val_unseen',
-              'test_unseen',
-              'test_seen']
+              'val_unseen']
   elif args.prefix == 'touchdown':
-    splits = ['dev', 'test']
+    splits = ['dev']
   else:
     raise NotImplementedError()
+  print('splits:', splits)
   for split in splits:
     env = Refer360Batch(img_features,
                         splits=[split],

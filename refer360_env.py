@@ -84,9 +84,13 @@ def _get_panorama_states(sim):
 def make_sim(cache_root='',
              image_w=400,
              image_h=400,
+             height=2276,
+             width=4552,
              fov=90):
   sim = Refer360Simulator(cache_root,
                           output_image_shape=(image_h, image_w),
+                          height=height,
+                          width=width,
                           fov=fov)
   return sim
 
@@ -406,15 +410,28 @@ class Refer360EnvBatch():
       using discretized viewpoints and pretrained features '''
 
   def __init__(self, batch_size, beam_size,
-               cache_root=''):
+               cache_root='',
+               height=2276,
+               width=4552,
+               args=None):
     self.sims = []
     self.batch_size = batch_size
     self.beam_size = beam_size
     self.cache_root = cache_root
+    if args:
+      if args.prefix == 'refer360':
+        width, height = 4552, 2276
+      elif args.prefix == 'touchdown':
+        width, height = 3000, 1500
+      else:
+        raise NotImplementedError()
+      print('full pano size is {} x {}'.format(height, width))
     sim = make_sim(cache_root,
-                   Refer360ImageFeatures.IMAGE_W,
-                   Refer360ImageFeatures.IMAGE_H,
-                   Refer360ImageFeatures.VFOV)
+                   image_w=Refer360ImageFeatures.IMAGE_W,
+                   image_h=Refer360ImageFeatures.IMAGE_H,
+                   fov=Refer360ImageFeatures.VFOV,
+                   height=height,
+                   width=width)
 
     for i in range(batch_size):
       beam = []
@@ -619,7 +636,8 @@ class Refer360Batch(R2RBatch):
     self.ix = 0
     self.batch_size = batch_size
     self.set_beam_size(beam_size,
-                       cache_root=cache_root)
+                       cache_root=cache_root,
+                       args=args)
     self.print_progress = False
     print('Refer360Batch loaded with %d instructions, using splits: %s' %
           (len(self.data), ','.join(splits)))
@@ -645,7 +663,8 @@ class Refer360Batch(R2RBatch):
 
   def set_beam_size(self, beam_size,
                     force_reload=False,
-                    cache_root=''):
+                    cache_root='',
+                    args=None):
     # warning: this will invalidate the environment, self.reset() should be called afterward!
     try:
       invalid = (beam_size != self.beam_size)
@@ -654,7 +673,8 @@ class Refer360Batch(R2RBatch):
     if force_reload or invalid:
       self.beam_size = beam_size
       self.env = Refer360EnvBatch(self.batch_size, beam_size,
-                                  cache_root=cache_root)
+                                  cache_root=cache_root,
+                                  args=args)
 
   def _gt_action(self, state, adj_loc_list, goalViewpointId, gt_path):
     '''
