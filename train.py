@@ -327,6 +327,11 @@ def make_follower(args, vocab,
 
 def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
   setup(args.seed)
+  if args.prefix == 'refer360':
+    width, height = 4552, 2276
+  elif args.prefix == 'touchdown':
+    width, height = 3000, 1500
+
   if args.env == 'r2r':
     EnvBatch = R2RBatch
     ImgFeatures = ImageFeatures
@@ -337,9 +342,11 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
     ImgFeatures = Refer360ImageFeatures
     Eval = refer360_eval.Refer360Evaluation
     sim = make_sim(args.cache_root,
-                   Refer360ImageFeatures.IMAGE_W,
-                   Refer360ImageFeatures.IMAGE_H,
-                   Refer360ImageFeatures.VFOV)
+                   image_w=Refer360ImageFeatures.IMAGE_W,
+                   image_h=Refer360ImageFeatures.IMAGE_H,
+                   fov=Refer360ImageFeatures.VFOV,
+                   height=height,
+                   width=width)
     sim.load_maps()
     env_sim = sim
   else:

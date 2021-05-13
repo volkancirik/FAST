@@ -323,7 +323,8 @@ def run(arg_parser, entry_function):
 
   if args.prefix in ['refer360', 'touchdown']:
     args.env = 'refer360'
-    args.metrics = 'fov_accuracy'
+    if args.metrics == 'success':
+      args.metrics = 'fov_accuracy'
     if args.blind:
       args.refer360_image_feature_type = ['none']
   else:

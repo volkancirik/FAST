@@ -10,6 +10,7 @@ class Refer360Simulator(CachedPanoramicCamera):
                output_image_shape=(400, 400),
                height=2276,
                width=4552):
+    print('full pano size is {} x {}'.format(height, width))
     super(Refer360Simulator, self).__init__(
         cache_root, fov, output_image_shape, height, width)
 

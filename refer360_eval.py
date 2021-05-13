@@ -14,7 +14,7 @@ from refer360_env import make_sim
 import utils
 
 from follower import BaseAgent
-#import train
+# import train
 
 from collections import namedtuple
 
@@ -22,7 +22,7 @@ from collections import namedtuple
 EvalResult = namedtuple(
     'EvalResult', 'nav_error, oracle_error, trajectory_steps, '
     'trajectory_length, success, oracle_success, spl, '
-    'fov_accuracy, acc_20, acc_40, acc_60,'
+    'fov_accuracy, acc_40, acc_80, acc_120, distance, '
     'cls, ndtw')
 
 
@@ -135,16 +135,19 @@ class Refer360Evaluation(object):
     self.sim.look_fov(final_position)
     res = self.sim.get_image_coordinate_for(gt['gt_lng'], gt['gt_lat'])
     metrics = defaultdict(float)
+
     if res != None:
       fov_accuracy = 1.0
       distance = np.sqrt(((res[0] - 200)
                           ** 2 + (res[1] - 200)**2))
-      for th in [20, 40, 60]:
+      for th in [40, 80, 120]:
         metrics['acc_{}'.format(th)] += int(distance <= th)
     else:
       fov_accuracy = 0
-      for th in [20, 40, 60]:
+      for th in [40, 80, 120]:
         metrics['acc_{}'.format(th)] += 0
+      distance = np.sqrt(((gt['gt_x'] - self.nodes[final_position]['x'])
+                          ** 2 + (gt['gt_y'] - self.nodes[final_position]['y'])**2))
 
     nearest_position = self._get_nearest(gt['scan'], goal, path)
     nav_error = self.distances[final_position][goal]
@@ -181,9 +184,10 @@ class Refer360Evaluation(object):
                       oracle_success=oracle_success,
                       spl=spl,
                       fov_accuracy=fov_accuracy,
-                      acc_20=metrics['acc_20'],
                       acc_40=metrics['acc_40'],
-                      acc_60=metrics['acc_60'],
+                      acc_80=metrics['acc_80'],
+                      acc_120=metrics['acc_120'],
+                      distance=distance,
                       cls=cls,
                       ndtw=ndtw)
 
@@ -234,9 +238,10 @@ class Refer360Evaluation(object):
             eval_result.oracle_success)
         self.scores['spl'].append(eval_result.spl)
         self.scores['fov_accuracy'].append(eval_result.fov_accuracy)
-        self.scores['acc_20'].append(eval_result.acc_20)
         self.scores['acc_40'].append(eval_result.acc_40)
-        self.scores['acc_60'].append(eval_result.acc_60)
+        self.scores['acc_80'].append(eval_result.acc_80)
+        self.scores['acc_120'].append(eval_result.acc_120)
+        self.scores['distance'].append(eval_result.distance)
         self.scores['cls'].append(eval_result.cls)
         self.scores['ndtw'].append(eval_result.ndtw)
 
@@ -282,12 +287,14 @@ class Refer360Evaluation(object):
         'spl': float(sum(self.scores['spl'])) / len(self.scores['spl']),
         'fov_accuracy': float(
             sum(self.scores['fov_accuracy']) / len(self.scores['fov_accuracy'])),
-        'acc_20': float(
-            sum(self.scores['acc_20']) / len(self.scores['acc_20'])),
         'acc_40': float(
             sum(self.scores['acc_40']) / len(self.scores['acc_40'])),
-        'acc_60': float(
-            sum(self.scores['acc_60']) / len(self.scores['acc_60'])),
+        'acc_80': float(
+            sum(self.scores['acc_80']) / len(self.scores['acc_80'])),
+        'acc_120': float(
+            sum(self.scores['acc_120']) / len(self.scores['acc_120'])),
+        'distance': float(
+            sum(self.scores['distance']) / len(self.scores['distance'])),
         'cls': float(sum(self.scores['cls'])) / len(self.scores['cls']),
         'ndtw': float(sum(self.scores['ndtw'])) / len(self.scores['ndtw']),
     }
@@ -413,10 +420,20 @@ def eval_simple_agents(args):
   ''' Run simple baselines on each split. '''
   img_features = Refer360ImageFeatures.from_args(args)
 
+  if args.prefix == 'refer360':
+    width, height = 4552, 2276
+  elif args.prefix == 'touchdown':
+    width, height = 3000, 1500
+  else:
+    raise NotImplementedError()
+
   sim = make_sim(args.cache_root,
-                 Refer360ImageFeatures.IMAGE_W,
-                 Refer360ImageFeatures.IMAGE_H,
-                 Refer360ImageFeatures.VFOV)
+                 image_w=Refer360ImageFeatures.IMAGE_W,
+                 image_h=Refer360ImageFeatures.IMAGE_H,
+                 fov=Refer360ImageFeatures.VFOV,
+                 height=height,
+                 width=width)
+
   sim.load_maps()
 
   # TODO add touchdown
@@ -454,10 +471,19 @@ def eval_seq2seq(args):
       args.RESULT_DIR + 'seq2seq_teacher_imagenet_%s_iter_5000.json',
       args.RESULT_DIR + 'seq2seq_sample_imagenet_%s_iter_20000.json'
   ]
+  if args.prefix == 'refer360':
+    width, height = 4552, 2276
+  elif args.prefix == 'touchdown':
+    width, height = 3000, 1500
+  else:
+    raise NotImplementedError()
+
   sim = make_sim(args.cache_root,
-                 Refer360ImageFeatures.IMAGE_W,
-                 Refer360ImageFeatures.IMAGE_H,
-                 Refer360ImageFeatures.VFOV)
+                 image_w=Refer360ImageFeatures.IMAGE_W,
+                 image_h=Refer360ImageFeatures.IMAGE_H,
+                 fov=Refer360ImageFeatures.VFOV,
+                 height=height,
+                 width=width)
   sim.load_maps()
 
   for outfile in outfiles:
@@ -472,11 +498,28 @@ def eval_seq2seq(args):
 
 def eval_outfiles(args):
   outfolder = args.results_path
-  splits = ['val_seen', 'val_unseen']
+
+  if args.prefix == 'refer360':
+    splits = ['val_seen',
+              'val_unseen']
+  elif args.prefix == 'touchdown':
+    splits = ['dev']
+  else:
+    raise NotImplementedError()
+  print('splits:', splits)
+
+  if args.prefix == 'refer360':
+    width, height = 4552, 2276
+  elif args.prefix == 'touchdown':
+    width, height = 3000, 1500
+  else:
+    raise NotImplementedError()
   sim = make_sim(args.cache_root,
-                 Refer360ImageFeatures.IMAGE_W,
-                 Refer360ImageFeatures.IMAGE_H,
-                 Refer360ImageFeatures.VFOV)
+                 image_w=Refer360ImageFeatures.IMAGE_W,
+                 image_h=Refer360ImageFeatures.IMAGE_H,
+                 fov=Refer360ImageFeatures.VFOV,
+                 height=height,
+                 width=width)
   sim.load_maps()
 
   for _f in os.listdir(outfolder):
@@ -495,10 +538,10 @@ def eval_outfiles(args):
 
 if __name__ == '__main__':
   from train import make_arg_parser
+  parser = make_arg_parser()
   # TODO: take function to run as argument
-  # parser = make_arg_parser()
-  # parser.add_argument('--results_path', type=str,
-  #                     default='')
+  parser.add_argument('--results_path', type=str,
+                      default='')
 
-  # utils.run(parser, eval_outfiles)
-  utils.run(make_arg_parser(), eval_simple_agents)
+  utils.run(parser, eval_outfiles)
+  # utils.run(parser, eval_simple_agents)

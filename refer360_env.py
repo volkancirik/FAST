@@ -425,7 +425,6 @@ class Refer360EnvBatch():
         width, height = 3000, 1500
       else:
         raise NotImplementedError()
-      print('full pano size is {} x {}'.format(height, width))
     sim = make_sim(cache_root,
                    image_w=Refer360ImageFeatures.IMAGE_W,
                    image_h=Refer360ImageFeatures.IMAGE_H,
