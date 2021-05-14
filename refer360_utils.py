@@ -298,7 +298,8 @@ def test_get_nears():
 def get_refer360_stats(
         butd_filename='./img_features/refer360_30degrees_obj36.tsv',
         image_list_file='./refer360_data/imagelist.txt',
-        n_fovs=240,
+        n_fovs=60,
+        angle_inc=30,
         obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json',
         cooccurrence_path='./cooccurrences'):
 
@@ -332,11 +333,12 @@ def get_refer360_stats(
         idx1, idx2 = obj_classes.index(name1), obj_classes.index(name2)
         cooccurrence[idx1, idx2] += 1
         cooccurrence[idx2, idx1] += 1
-  d = {'method': 'refer360_30degrees_butd_36obj',
-       'prefix': 'r30butd_v3',
+  d = {'method': 'refer360_{}degrees_butd_36obj'.format(angle_inc),
+       'prefix': 'r{}butd_v3'.format(angle_inc),
        'butd_filename': butd_filename,
        'cooccurrence': cooccurrence}
-  np.save(os.path.join(cooccurrence_path, 'cooccurrence.r30butd_v3.npy'), d)
+  np.save(os.path.join(cooccurrence_path,
+                       'cooccurrence.r{}butd_v3.npy'.format(angle_inc)), d)
   print('DONE! bye.')
 
 
@@ -463,6 +465,7 @@ def dump_fov_caches(
         butd_filename='./img_features/refer360_30degrees_obj36.tsv',
         image_list_file='./refer360_data/imagelist.txt',
         n_fovs=60,
+        angle_inc=30,
         word_embedding_path='./tasks/FAST/data/cc.en.300.vec',
         obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json',
         cooccurrence_files=[],
@@ -504,7 +507,8 @@ def dump_fov_caches(
         cooccurrence[idx, :] = 1.0 / cooccurrence.shape[0]
 
     prefix = cooccurrence_data['prefix']
-    outfile = 'img_features/refer360_30degrees_{}{}.tsv'.format(prefix, suffix)
+    outfile = 'img_features/refer360_{}degrees_{}{}.tsv'.format(
+        angle_inc, prefix, suffix)
     print('output file:', outfile)
 
     image_list = [line.strip()
@@ -579,6 +583,7 @@ def dump_fov_stats(
         butd_filename='./img_features/refer360_30degrees_obj36.tsv',
         image_list_file='./refer360_data/imagelist.txt',
         n_fovs=60,
+        angle_inc=30,
         word_embedding_path='./tasks/FAST/data/cc.en.300.vec',
         obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json',
         stats_files=[],
@@ -689,10 +694,18 @@ def generate_baseline_cooccurrences(
 if __name__ == '__main__':
   # generate_baseline_cooccurrences()
   # test_get_nears()
-  # get_refer360_stats()
   # get_visualgenome_stats()
   # get_spatialsense_stats()
   # get_wordnet_stats()
+
+  angle_inc = 30
+  n_fovs = int((360 / angle_inc)*(150/angle_inc))
+  butd_filename = './img_features/refer360_{}degrees_obj36.tsv'.format(
+      angle_inc)
+
+  get_refer360_stats(butd_filename=butd_filename,
+                     n_fovs=n_fovs,
+                     angle_inc=angle_inc)
   cooccurrence_files = [
       './cooccurrences/cooccurrence.gptneo_v3.npy',
       './cooccurrences/cooccurrence.vg_v3.npy',
@@ -703,10 +716,20 @@ if __name__ == '__main__':
       './cooccurrences/cooccurrence.gpt2_v3.npy',
       './cooccurrences/cooccurrence.gpt_v3.npy',
       './cooccurrences/cooccurrence.ss_v3.npy',
-      './cooccurrences/cooccurrence.r30butd_v3.npy',
+      './cooccurrences/cooccurrence.r{}butd_v3.npy'.format(angle_inc),
   ]
   for cooccurrence_file in cooccurrence_files:
-    dump_fov_caches(cooccurrence_files=cooccurrence_files, diag_mode=1)
+    dump_fov_caches(butd_filename=butd_filename,
+                    n_fovs=n_fovs,
+                    angle_inc=angle_inc,
+                    cooccurrence_files=cooccurrence_files,
+                    diag_mode=0)
+  for cooccurrence_file in cooccurrence_files:
+    dump_fov_caches(butd_filename=butd_filename,
+                    n_fovs=n_fovs,
+                    angle_inc=angle_inc,
+                    cooccurrence_files=cooccurrence_files,
+                    diag_mode=1)
 
   cooccurrence_files = [
       './cooccurrences/cooccurrence.random100.npy',
@@ -714,20 +737,28 @@ if __name__ == '__main__':
       './cooccurrences/cooccurrence.diagonal.npy'
   ]
   for cooccurrence_file in cooccurrence_files:
-    dump_fov_caches(cooccurrence_files=cooccurrence_files, diag_mode=0)
+    dump_fov_caches(butd_filename=butd_filename,
+                    n_fovs=n_fovs,
+                    angle_inc=angle_inc,
+                    cooccurrence_files=cooccurrence_files,
+                    diag_mode=0)
 
-  # stats_files = [
-  #     './cooccurrences/cached30degrees_stats.npy',
-  #     './cooccurrences/cached30degrees_stats.npy'
-  # ]
-  # outfiles = [
-  #     'img_features/refer360_30degrees_r30statsall_v3.tsv',
-  #     'img_features/refer360_30degrees_r30statsfov2reg_v3.tsv',
-  # ]
-  # methods = [
-  #     'all_regions',
-  #     'fov2regions'
-  # ]
-  # dump_fov_stats(stats_files=stats_files,
-  #                outfiles=outfiles,
-  #                methods=methods)
+  stats_files = [
+      './cooccurrences/cached{}degrees_stats.npy'.format(angle_inc),
+      './cooccurrences/cached{}degrees_stats.npy'.format(angle_inc)
+  ]
+  outfiles = [
+      'img_features/refer360_{}degrees_r{}statsall_v3.tsv'.format(
+          angle_inc, angle_inc),
+      'img_features/refer360_{}degrees_r{}statsfov2reg_v3.tsv'.format(
+          angle_inc, angle_inc),
+  ]
+  methods = [
+      'all_regions',
+      'fov2regions'
+  ]
+  dump_fov_stats(butd_filename=butd_filename,
+                 n_fovs=n_fovs,
+                 stats_files=stats_files,
+                 outfiles=outfiles,
+                 methods=methods)
