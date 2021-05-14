@@ -299,7 +299,8 @@ def get_refer360_stats(
         butd_filename='./img_features/refer360_30degrees_obj36.tsv',
         image_list_file='./refer360_data/imagelist.txt',
         n_fovs=240,
-        obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json'):
+        obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json',
+        cooccurrence_path='./cooccurrences'):
 
   vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name = get_object_dictionaries(
       obj_dict_file, return_all=True)
@@ -335,13 +336,14 @@ def get_refer360_stats(
        'prefix': 'r30butd_v3',
        'butd_filename': butd_filename,
        'cooccurrence': cooccurrence}
-  np.save('cooccurrence.r30butd_v3.npy', d)
+  np.save(os.path.join(cooccurrence_path, 'cooccurrence.r30butd_v3.npy'), d)
   print('DONE! bye.')
 
 
 def get_spatialsense_stats(
         spatialsense_annotations='/projects3/all_data/spatialsense/annotations.json',
-        obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json'):
+        obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json',
+        cooccurrence_path='./cooccurrences'):
 
   anns = json.load(open(spatialsense_annotations, 'r'))
 
@@ -380,13 +382,14 @@ def get_spatialsense_stats(
   d = {'method': 'spatialsense',
        'prefix': 'ss_v3',
        'cooccurrence': cooccurrence}
-  np.save('cooccurrence.ss_v3.npy', d)
+  np.save(os.path.join(cooccurrence_path, 'cooccurrence.ss_v3.npy'), d)
   print('DONE! bye.')
 
 
 def get_visualgenome_stats(
         visualgenome_objects='/projects3/all_data/visualgenome/objects.json',
-        obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json'):
+        obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json',
+        cooccurrence_path='./cooccurrences'):
 
   objects = json.load(open(visualgenome_objects, 'r'))
 
@@ -417,7 +420,7 @@ def get_visualgenome_stats(
   d = {'method': 'visualgenome v1.4',
        'prefix': 'vg_v3',
        'cooccurrence': cooccurrence}
-  np.save('cooccurrence.vg_v3.npy', d)
+  np.save(os.path.join(cooccurrence_path, 'cooccurrence.vg_v3.npy'), d)
   print('DONE! bye.')
 
 
@@ -431,7 +434,9 @@ def wordnet_similarity(word1, word2):
   return wordFromList1.wup_similarity(wordFromList2)
 
 
-def get_wordnet_stats(obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json'):
+def get_wordnet_stats(
+        obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json',
+        cooccurrence_path='./cooccurrences'):
 
   vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name = get_object_dictionaries(
       obj_dict_file, return_all=True)
@@ -450,7 +455,7 @@ def get_wordnet_stats(obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.al
   d = {'method': 'wordnet similarity',
        'prefix': 'wn_v3',
        'cooccurrence': cooccurrence}
-  np.save('cooccurrence.wn_v3.npy', d)
+  np.save(os.path.join(cooccurrence_path, 'cooccurrence.wn_v3.npy'), d)
   print('DONE! bye.')
 
 
@@ -460,7 +465,8 @@ def dump_fov_caches(
         n_fovs=60,
         word_embedding_path='./tasks/FAST/data/cc.en.300.vec',
         obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json',
-        cooccurrence_files=[]):
+        cooccurrence_files=[],
+        diag_mode=0):
 
   vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name = get_object_dictionaries(
       obj_dict_file, return_all=True)
@@ -482,6 +488,14 @@ def dump_fov_caches(
     cooccurrence = cooccurrence_data['cooccurrence']
     # normalize the counts
 
+    if diag_mode == 0:
+      suffix = ''
+    elif diag_mode == 1:
+      suffix = 'DIAG0'
+      np.fill_diagonal(cooccurrence, 0)
+    else:
+      raise NotImplementedError()
+
     for idx in range(cooccurrence.shape[0]):
       sum_count = np.sum(cooccurrence[idx, :])
       if sum_count > 0:
@@ -490,7 +504,7 @@ def dump_fov_caches(
         cooccurrence[idx, :] = 1.0 / cooccurrence.shape[0]
 
     prefix = cooccurrence_data['prefix']
-    outfile = 'img_features/refer360_30degrees_{}.tsv'.format(prefix)
+    outfile = 'img_features/refer360_30degrees_{}{}.tsv'.format(prefix, suffix)
     print('output file:', outfile)
 
     image_list = [line.strip()
@@ -642,29 +656,69 @@ def dump_fov_stats(
   print('DONE with all!')
 
 
+def generate_baseline_cooccurrences(
+        obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json',
+        cooccurrence_path='./cooccurrences'):
+
+  _, _, _, _, _, vg2name = get_object_dictionaries(
+      obj_dict_file, return_all=True)
+  n_objects = len(vg2name)
+  rand100_cooccurrence = np.random.randint(100, size=(n_objects, n_objects))
+
+  d = {'method': 'ranindt max 100',
+       'prefix': 'random100',
+       'cooccurrence': rand100_cooccurrence}
+  np.save(os.path.join(cooccurrence_path, 'cooccurrence.random100.npy'), d)
+
+  uniform_cooccurrence = np.ones((n_objects, n_objects))
+  d = {'method': 'uniform',
+       'prefix': 'uniform',
+       'cooccurrence': uniform_cooccurrence}
+  np.save(os.path.join(cooccurrence_path, 'cooccurrence.uniform.npy'), d)
+
+  diagonal_cooccurrence = np.zeros((n_objects, n_objects))
+  np.fill_diagonal(diagonal_cooccurrence, 1)
+  d = {'method': 'diagonal 1',
+       'prefix': 'diagonal',
+       'cooccurrence': diagonal_cooccurrence}
+  np.save(os.path.join(cooccurrence_path, 'cooccurrence.diagonal.npy'), d)
+
+  print('DONE! bye.')
+
+
 if __name__ == '__main__':
-  test_get_nears()
+  # generate_baseline_cooccurrences()
+  # test_get_nears()
   # get_refer360_stats()
   # get_visualgenome_stats()
   # get_spatialsense_stats()
   # get_wordnet_stats()
   cooccurrence_files = [
-      '/projects1/Matterport3DSimulator/cooccurrence.gptneo_v3.npy',
-      # '/projects1/Matterport3DSimulator/cooccurrence.vg_v3.npy',
-      # '/projects1/Matterport3DSimulator/cooccurrence.wn_v3.npy',
-      # '/projects1/Matterport3DSimulator/cooccurrence.ctrl_v3.npy',
-      # '/projects1/Matterport3DSimulator/cooccurrence.xlm_v3.npy',
-      # '/projects1/Matterport3DSimulator/cooccurrence.gpt3_v3.npy',
-      # '/projects1/Matterport3DSimulator/cooccurrence.gpt2_v3.npy',
-      # '/projects1/Matterport3DSimulator/cooccurrence.gpt_v3.npy',
-      # '/projects1/Matterport3DSimulator/cooccurrence.ss_v3.npy',
-      # '/projects1/Matterport3DSimulator/cooccurrence.r30butd_v3.npy',
+      './cooccurrences/cooccurrence.gptneo_v3.npy',
+      './cooccurrences/cooccurrence.vg_v3.npy',
+      './cooccurrences/cooccurrence.wn_v3.npy',
+      './cooccurrences/cooccurrence.ctrl_v3.npy',
+      './cooccurrences/cooccurrence.xlm_v3.npy',
+      './cooccurrences/cooccurrence.gpt3_v3.npy',
+      './cooccurrences/cooccurrence.gpt2_v3.npy',
+      './cooccurrences/cooccurrence.gpt_v3.npy',
+      './cooccurrences/cooccurrence.ss_v3.npy',
+      './cooccurrences/cooccurrence.r30butd_v3.npy',
   ]
   for cooccurrence_file in cooccurrence_files:
-    dump_fov_caches(cooccurrence_files=cooccurrence_files)
+    dump_fov_caches(cooccurrence_files=cooccurrence_files, diag_mode=1)
+
+  cooccurrence_files = [
+      './cooccurrences/cooccurrence.random100.npy',
+      './cooccurrences/cooccurrence.uniform.npy',
+      './cooccurrences/cooccurrence.diagonal.npy'
+  ]
+  for cooccurrence_file in cooccurrence_files:
+    dump_fov_caches(cooccurrence_files=cooccurrence_files, diag_mode=0)
+
   # stats_files = [
-  #     '/projects1/Matterport3DSimulator/cached30degrees_stats.npy',
-  #     '/projects1/Matterport3DSimulator/cached30degrees_stats.npy'
+  #     './cooccurrences/cached30degrees_stats.npy',
+  #     './cooccurrences/cached30degrees_stats.npy'
   # ]
   # outfiles = [
   #     'img_features/refer360_30degrees_r30statsall_v3.tsv',
