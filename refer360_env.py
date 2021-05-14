@@ -8,7 +8,7 @@ import pdb
 import random
 import os.path
 import base64
-
+import math
 from collections import defaultdict
 import numpy as np
 from tqdm import tqdm
@@ -108,7 +108,7 @@ class Refer360ImageFeatures(object):
   def from_args(args):
     feats = []
 
-    n_fovs = int((360 / args.angle_inc)*(150/args.angle_inc))
+    n_fovs = int((360 / args.angle_inc)*math.ceil(150/args.angle_inc))
     for image_feature_type in sorted(args.refer360_image_feature_type):
       if 'none' in image_feature_type:
         feats.append(NoImageFeatures())
