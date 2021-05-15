@@ -1,4 +1,5 @@
 ''' Utils for Refer360 grounding environment '''
+import math
 from collections import defaultdict
 import numpy as np
 import base64
@@ -692,16 +693,20 @@ def generate_baseline_cooccurrences(
 
 
 if __name__ == '__main__':
-  # generate_baseline_cooccurrences()
-  # test_get_nears()
-  # get_visualgenome_stats()
-  # get_spatialsense_stats()
-  # get_wordnet_stats()
 
-  angle_inc = 30
-  n_fovs = int((360 / angle_inc)*(150/angle_inc))
+  angle_inc = int(sys.argv[1])
+  n_fovs = int((360 / angle_inc)*math.ceil(150/angle_inc))
   butd_filename = './img_features/refer360_{}degrees_obj36.tsv'.format(
       angle_inc)
+  print('angle_inc', angle_inc)
+  print('n_fovs', n_fovs)
+  print('butd_filename', butd_filename)
+
+  test_get_nears()
+  generate_baseline_cooccurrences()
+  get_visualgenome_stats()
+  get_spatialsense_stats()
+  get_wordnet_stats()
 
   get_refer360_stats(butd_filename=butd_filename,
                      n_fovs=n_fovs,
@@ -718,30 +723,27 @@ if __name__ == '__main__':
       './cooccurrences/cooccurrence.ss_v3.npy',
       './cooccurrences/cooccurrence.r{}butd_v3.npy'.format(angle_inc),
   ]
-  for cooccurrence_file in cooccurrence_files:
-    dump_fov_caches(butd_filename=butd_filename,
-                    n_fovs=n_fovs,
-                    angle_inc=angle_inc,
-                    cooccurrence_files=cooccurrence_files,
-                    diag_mode=0)
-  for cooccurrence_file in cooccurrence_files:
-    dump_fov_caches(butd_filename=butd_filename,
-                    n_fovs=n_fovs,
-                    angle_inc=angle_inc,
-                    cooccurrence_files=cooccurrence_files,
-                    diag_mode=1)
+  dump_fov_caches(butd_filename=butd_filename,
+                  n_fovs=n_fovs,
+                  angle_inc=angle_inc,
+                  cooccurrence_files=cooccurrence_files,
+                  diag_mode=0)
+  dump_fov_caches(butd_filename=butd_filename,
+                  n_fovs=n_fovs,
+                  angle_inc=angle_inc,
+                  cooccurrence_files=cooccurrence_files,
+                  diag_mode=1)
 
-  cooccurrence_files = [
+  cooccurrence_baselines = [
       './cooccurrences/cooccurrence.random100.npy',
       './cooccurrences/cooccurrence.uniform.npy',
       './cooccurrences/cooccurrence.diagonal.npy'
   ]
-  for cooccurrence_file in cooccurrence_files:
-    dump_fov_caches(butd_filename=butd_filename,
-                    n_fovs=n_fovs,
-                    angle_inc=angle_inc,
-                    cooccurrence_files=cooccurrence_files,
-                    diag_mode=0)
+  dump_fov_caches(butd_filename=butd_filename,
+                  n_fovs=n_fovs,
+                  angle_inc=angle_inc,
+                  cooccurrence_files=cooccurrence_files,
+                  diag_mode=0)
 
   stats_files = [
       './cooccurrences/cached{}degrees_stats.npy'.format(angle_inc),
