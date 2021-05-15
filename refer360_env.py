@@ -129,9 +129,10 @@ class Refer360ImageFeatures(object):
                                        use_object_embeddings=args.use_object_embeddings,
                                        center_model=args.refer360_center_model))
       if 'prior' in image_feature_type:
-        feats.append(PriorImageFeatures(
-            prior_prefix=args.prior_prefix,
-            prior_method=args.refer360_prior_method,))
+        for prior_method in args.refer360_prior_method.split(','):
+          feats.append(PriorImageFeatures(
+              prior_prefix=args.prior_prefix,
+              prior_method=prior_method))
       assert len(feats) >= 1, 'len(feats) >= 1, {} >= 0'.format(len(feats))
     return feats
 
