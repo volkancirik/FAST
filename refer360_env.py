@@ -267,26 +267,21 @@ class BUTDImageFeatures(Refer360ImageFeatures):
     self.use_object_embeddings = use_object_embeddings
     if self.use_object_embeddings:
       self.objemb, self.feature_dim = True, 300
-      self.name2objid, self.objid2name = {}, {}
-      vg2idx, idx2vg, obj_classes = get_object_dictionaries(
-          obj_dict_file)
-      for idx in idx2vg:
-        self.objid2name[idx2vg[idx]] = obj_classes[int(idx)]
-        self.name2objid[obj_classes[int(idx)]] = idx2vg[idx]
 
-      self.name2objid['</s>'] = len(self.objid2name)
-      self.objid2name[len(self.objid2name)] = '</s>'
+      vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name = get_object_dictionaries(
+          obj_dict_file, return_all=True)
+      self.name2vg, self.vg2name = name2vg, vg2name
 
       print('Loading word embeddings...')
-      self.w2v = load_vectors(word_embedding_path, self.name2objid)
+      self.w2v = load_vectors(word_embedding_path, self.name2vg)
       missing = []
-      for w in self.name2objid:
+      for w in self.name2vg:
         if w not in self.w2v:
           missing += [w]
       print('Missing object names:', ' '.join(missing))
     else:
       self.objemb, self.feature_dim = False, 2048
-      self.w2v, self.objid2name, self.name2objid = None, None, None
+      self.w2v, self.vg2name, self.name2vg = None, None, None
 
     self.features = defaultdict(list)
 
@@ -317,7 +312,7 @@ class BUTDImageFeatures(Refer360ImageFeatures):
     print('loading BUTD features...', image_list_file)
     fov2feat = load_butd(butd_filename,
                          w2v=self.w2v,
-                         objid2name=self.objid2name,
+                         vg2name=self.vg2name,
                          keys=['features'])['features']
     print('loaded BUTD features!', image_list_file)
     print('loading image features for refer360...')
