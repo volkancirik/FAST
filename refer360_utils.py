@@ -702,7 +702,7 @@ if __name__ == '__main__':
   print('n_fovs', n_fovs)
   print('butd_filename', butd_filename)
 
-  test_get_nears()
+  # test_get_nears()
   generate_baseline_cooccurrences()
   get_visualgenome_stats()
   get_spatialsense_stats()
@@ -742,7 +742,7 @@ if __name__ == '__main__':
   dump_fov_caches(butd_filename=butd_filename,
                   n_fovs=n_fovs,
                   angle_inc=angle_inc,
-                  cooccurrence_files=cooccurrence_files,
+                  cooccurrence_files=cooccurrence_baselines,
                   diag_mode=0)
 
   stats_files = [
