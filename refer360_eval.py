@@ -24,6 +24,19 @@ EvalResult = namedtuple(
     'trajectory_length, success, oracle_success, spl, '
     'fov_accuracy, acc_40, acc_80, acc_120, distance, '
     'cls, ndtw')
+METRICS = [
+  'acc_40',
+  'acc_80',
+  'acc_120',
+  'distance',
+  'fov_accuracy',
+  'success',
+  'steps',
+  'spl',
+  'ndtw',
+  'cls',
+  'oracle_rate',
+]
 
 
 class Refer360Evaluation(object):
@@ -462,6 +475,9 @@ def eval_simple_agents(args):
       score_summary, _, _ = ev.score_file(outfile)
       print('\n%s' % agent_type)
       pp.pprint(score_summary)
+      print('CSV below:')
+      print(','.join(['{}'.format(metric) for metric in METRICS]))
+      print(','.join(['{:4.3f}'.format(score_summary[metric]) for metric in METRICS]))
 
 
 def eval_seq2seq(args):
@@ -522,19 +538,6 @@ def eval_outfiles(args):
                  width=width)
   sim.load_maps()
 
-  metrics = [
-    'acc_40',
-    'acc_80',
-    'acc_120',
-    'distance',
-    'fov_accuracy',
-    'success',
-    'steps',
-    'spl',
-    'ndtw',
-    'cls',
-    'oracle_rate',
-    ]
   for _f in os.listdir(outfolder):
     outfile = os.path.join(outfolder, _f)
     _splits = []
@@ -548,8 +551,8 @@ def eval_outfiles(args):
     print('\n', outfile)
     pp.pprint(score_summary)
     print('CSV below:')
-    print(','.join(['{}'.format(metric) for metric in metrics]))
-    print(','.join(['{:4.3f}'.format(score_summary[metric]) for metric in metrics]))
+    print(','.join(['{}'.format(metric) for metric in METRICS]))
+    print(','.join(['{:4.3f}'.format(score_summary[metric]) for metric in METRICS]))
 
 if __name__ == '__main__':
   from train import make_arg_parser
