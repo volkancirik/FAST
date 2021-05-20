@@ -414,7 +414,7 @@ class Refer360EnvBatch():
     if args:
       if args.prefix == 'refer360':
         width, height = 4552, 2276
-      elif args.prefix == 'touchdown':
+      elif args.prefix in ['touchdown', 'td']:
         width, height = 3000, 1500
       else:
         raise NotImplementedError()

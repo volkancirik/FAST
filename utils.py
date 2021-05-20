@@ -321,7 +321,7 @@ def run(arg_parser, entry_function):
   args.prior_prefix = os.path.join(
       'img_features', '{}_{}degrees_'.format(args.prefix, args.angle_inc))
 
-  if args.prefix in ['refer360', 'touchdown']:
+  if args.prefix in ['refer360', 'touchdown', 'td']:
     args.env = 'refer360'
     if args.metrics == 'success':
       args.metrics = 'fov_accuracy'

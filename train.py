@@ -329,7 +329,7 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
   setup(args.seed)
   if args.prefix == 'refer360':
     width, height = 4552, 2276
-  elif args.prefix == 'touchdown':
+  elif args.prefix in ['touchdown', 'td']:
     width, height = 3000, 1500
 
   if args.env == 'r2r':
@@ -389,7 +389,7 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
 def train_setup(args, train_splits=['train']):
   if args.prefix in ['refer360', 'r2r', 'R2R', 'REVERIE']:
     val_splits = ['val_seen', 'val_unseen']
-  elif args.prefix in ['touchdown']:
+  elif args.prefix in ['touchdown', 'td']:
     val_splits = ['dev']
   else:
     raise NotImplementedError()

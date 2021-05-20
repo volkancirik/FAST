@@ -25,17 +25,17 @@ EvalResult = namedtuple(
     'fov_accuracy, acc_40, acc_80, acc_120, distance, '
     'cls, ndtw')
 METRICS = [
-  'acc_40',
-  'acc_80',
-  'acc_120',
-  'distance',
-  'fov_accuracy',
-  'success',
-  'steps',
-  'spl',
-  'ndtw',
-  'cls',
-  'oracle_rate',
+    'acc_40',
+    'acc_80',
+    'acc_120',
+    'distance',
+    'fov_accuracy',
+    'success',
+    'steps',
+    'spl',
+    'ndtw',
+    'cls',
+    'oracle_rate',
 ]
 
 
@@ -70,7 +70,7 @@ class Refer360Evaluation(object):
       item['gt_actions_path'] = item['path']
       self.gt[item['path_id']] = item
       self.scans.append(item['scan'])
-      if prefix in ['refer360', 'touchdown']:
+      if prefix in ['refer360', 'touchdown', 'td']:
         self.instr_ids += ['%s_%d' % (item['path_id'], i) for i in
                            range(len(item['instructions']))]
       else:
@@ -435,7 +435,7 @@ def eval_simple_agents(args):
 
   if args.prefix == 'refer360':
     width, height = 4552, 2276
-  elif args.prefix == 'touchdown':
+  elif args.prefix in ['touchdown', 'td']:
     width, height = 3000, 1500
   else:
     raise NotImplementedError()
@@ -453,7 +453,7 @@ def eval_simple_agents(args):
   if args.prefix == 'refer360':
     splits = ['val_seen',
               'val_unseen']
-  elif args.prefix == 'touchdown':
+  elif args.prefix in ['touchdown', 'td']:
     splits = ['dev']
   else:
     raise NotImplementedError()
@@ -477,7 +477,8 @@ def eval_simple_agents(args):
       pp.pprint(score_summary)
       print('CSV below:')
       print(','.join(['{}'.format(metric) for metric in METRICS]))
-      print(','.join(['{:4.3f}'.format(score_summary[metric]) for metric in METRICS]))
+      print(','.join(['{:4.3f}'.format(score_summary[metric])
+                      for metric in METRICS]))
 
 
 def eval_seq2seq(args):
@@ -489,7 +490,7 @@ def eval_seq2seq(args):
   ]
   if args.prefix == 'refer360':
     width, height = 4552, 2276
-  elif args.prefix == 'touchdown':
+  elif args.prefix in ['touchdown', 'td']:
     width, height = 3000, 1500
   else:
     raise NotImplementedError()
@@ -518,7 +519,7 @@ def eval_outfiles(args):
   if args.prefix == 'refer360':
     splits = ['val_seen',
               'val_unseen']
-  elif args.prefix == 'touchdown':
+  elif args.prefix in ['touchdown', 'td']:
     splits = ['dev']
   else:
     raise NotImplementedError()
@@ -526,7 +527,7 @@ def eval_outfiles(args):
 
   if args.prefix == 'refer360':
     width, height = 4552, 2276
-  elif args.prefix == 'touchdown':
+  elif args.prefix in ['touchdown', 'td']:
     width, height = 3000, 1500
   else:
     raise NotImplementedError()
@@ -552,7 +553,9 @@ def eval_outfiles(args):
     pp.pprint(score_summary)
     print('CSV below:')
     print(','.join(['{}'.format(metric) for metric in METRICS]))
-    print(','.join(['{:4.3f}'.format(score_summary[metric]) for metric in METRICS]))
+    print(','.join(['{:4.3f}'.format(score_summary[metric])
+                    for metric in METRICS]))
+
 
 if __name__ == '__main__':
   from train import make_arg_parser
@@ -561,5 +564,5 @@ if __name__ == '__main__':
   parser.add_argument('--results_path', type=str,
                       default='')
 
-  utils.run(parser, eval_outfiles)
-  # utils.run(parser, eval_simple_agents)
+  #utils.run(parser, eval_outfiles)
+  utils.run(parser, eval_simple_agents)
