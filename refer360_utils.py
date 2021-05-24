@@ -304,7 +304,8 @@ def get_refer360_stats(
         angle_inc=30,
         data_prefix='refer360',
         obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json',
-        cooccurrence_path='./cooccurrences'):
+        cooccurrence_path='./cooccurrences',
+        version='v3'):
 
   vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name = get_object_dictionaries(
       obj_dict_file, return_all=True)
@@ -337,18 +338,19 @@ def get_refer360_stats(
         cooccurrence[idx1, idx2] += 1
         cooccurrence[idx2, idx1] += 1
   d = {'method': '{}_{}degrees_butd_36obj'.format(data_prefix, angle_inc),
-       'prefix': 'r{}butd_v3'.format(angle_inc),
+       'prefix': 'r{}butd_{}'.format(angle_inc, version),
        'butd_filename': butd_filename,
        'cooccurrence': cooccurrence}
   np.save(os.path.join(cooccurrence_path,
-                       'cooccurrence.r{}butd_v3.npy'.format(angle_inc)), d)
+                       'cooccurrence.r{}butd_{}.npy'.format(angle_inc, version)), d)
   print('DONE! bye.')
 
 
 def get_spatialsense_stats(
         spatialsense_annotations='/projects3/all_data/spatialsense/annotations.json',
         obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json',
-        cooccurrence_path='./cooccurrences'):
+        cooccurrence_path='./cooccurrences',
+        version='v3'):
 
   anns = json.load(open(spatialsense_annotations, 'r'))
 
@@ -385,9 +387,10 @@ def get_spatialsense_stats(
         cooccurrence[idx2, idx1] += 1
 
   d = {'method': 'spatialsense',
-       'prefix': 'ss_v3',
+       'prefix': 'ss_{}'.format(version),
        'cooccurrence': cooccurrence}
-  np.save(os.path.join(cooccurrence_path, 'cooccurrence.ss_v3.npy'), d)
+  np.save(os.path.join(cooccurrence_path,
+                       'cooccurrence.ss_{}.npy'.format(version)), d)
   print('DONE! bye.')
 
 
@@ -423,9 +426,10 @@ def get_visualgenome_stats(
       cooccurrence[idx2, idx1] += 1
 
   d = {'method': 'visualgenome v1.4',
-       'prefix': 'vg_v3',
+       'prefix': 'vg_{}'.format(version),
        'cooccurrence': cooccurrence}
-  np.save(os.path.join(cooccurrence_path, 'cooccurrence.vg_v3.npy'), d)
+  np.save(os.path.join(cooccurrence_path,
+                       'cooccurrence.vg_{}.npy'.format(version)), d)
   print('DONE! bye.')
 
 
@@ -441,7 +445,8 @@ def wordnet_similarity(word1, word2):
 
 def get_wordnet_stats(
         obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json',
-        cooccurrence_path='./cooccurrences'):
+        cooccurrence_path='./cooccurrences',
+        version='v3'):
 
   vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name = get_object_dictionaries(
       obj_dict_file, return_all=True)
@@ -458,9 +463,10 @@ def get_wordnet_stats(
       cooccurrence[idx2, idx1] = sim_score
 
   d = {'method': 'wordnet similarity',
-       'prefix': 'wn_v3',
+       'prefix': 'wn_{}'.format(version),
        'cooccurrence': cooccurrence}
-  np.save(os.path.join(cooccurrence_path, 'cooccurrence.wn_v3.npy'), d)
+  np.save(os.path.join(cooccurrence_path,
+                       'cooccurrence.wn_{}.npy'.format(version)), d)
   print('DONE! bye.')
 
 
@@ -540,17 +546,18 @@ def dump_fov_caches(
             features[4, :] = np.sum(emb_feats, axis=0)
             dir2obj = defaultdict(list)
 
+            # TODO: this should be a function
             for ii, box in enumerate(boxes):
               directions = []
-              if box[1] < 120:
+              if box[1] < 200:
                 directions.append('u')
-              elif box[1] > 280:
+              elif box[1] > 200:
                 directions.append('d')
-              if box[0] < 120:
+              if box[0] < 200:
                 if directions:
                   directions[0] += 'l'
                 directions.append('l')
-              elif box[0] > 280:
+              elif box[0] > 200:
                 if directions:
                   directions[0] += 'r'
                 directions.append('r')
@@ -677,15 +684,15 @@ def evaluate_fov_caches(
             src_idx = obj_classes.index(name)
 
             directions = []
-            if box[1] < 60:
+            if box[1] < 200:
               directions.append('u')
-            elif box[1] > 340:
+            elif box[1] > 200:
               directions.append('d')
-            if box[0] < 60:
+            if box[0] < 200:
               if directions:
                 directions[0] += 'l'
               directions.append('l')
-            elif box[0] > 360:
+            elif box[0] > 200:
               if directions:
                 directions[0] += 'r'
               directions.append('r')
@@ -856,7 +863,8 @@ def dump_fov_stats(
 
 def generate_baseline_cooccurrences(
         obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json',
-        cooccurrence_path='./cooccurrences'):
+        cooccurrence_path='./cooccurrences',
+        version='v4'):
 
   _, _, _, _, _, vg2name = get_object_dictionaries(
       obj_dict_file, return_all=True)
@@ -864,22 +872,25 @@ def generate_baseline_cooccurrences(
   rand100_cooccurrence = np.random.randint(100, size=(n_objects, n_objects))
 
   d = {'method': 'ranindt max 100',
-       'prefix': 'random100',
+       'prefix': 'random100_{}'.format(version),
        'cooccurrence': rand100_cooccurrence}
-  np.save(os.path.join(cooccurrence_path, 'cooccurrence.random100.npy'), d)
+  np.save(os.path.join(cooccurrence_path,
+                       'cooccurrence.random100_.npy'.format(version)), d)
 
   uniform_cooccurrence = np.ones((n_objects, n_objects))
   d = {'method': 'uniform',
-       'prefix': 'uniform',
+       'prefix': 'uniform_{}'.format(version),
        'cooccurrence': uniform_cooccurrence}
-  np.save(os.path.join(cooccurrence_path, 'cooccurrence.uniform.npy'), d)
+  np.save(os.path.join(cooccurrence_path,
+                       'cooccurrence.uniform_{}.npy'.format(version)), d)
 
   diagonal_cooccurrence = np.zeros((n_objects, n_objects))
   np.fill_diagonal(diagonal_cooccurrence, 1)
   d = {'method': 'diagonal 1',
-       'prefix': 'diagonal',
+       'prefix': 'diagonal_{}'.format(version),
        'cooccurrence': diagonal_cooccurrence}
-  np.save(os.path.join(cooccurrence_path, 'cooccurrence.diagonal.npy'), d)
+  np.save(os.path.join(cooccurrence_path,
+                       'cooccurrence.diagonal_{}.npy'.format(version)), d)
 
   print('DONE! bye.')
 
@@ -902,27 +913,30 @@ if __name__ == '__main__':
   print('cache_root', cache_root)
   print('image_list_file', image_list_file)
   print('output_root', output_root)
+  version = 'v4'
+  print('version:', version)
   # test_get_nears()
-  # generate_baseline_cooccurrences()
-  # get_visualgenome_stats()
-  # get_spatialsense_stats()
-  # get_wordnet_stats()
-  # get_refer360_stats(butd_filename=butd_filename,
-  #                    image_list_file=image_list_file,
-  #                    n_fovs=n_fovs,
-  #                    angle_inc=angle_inc,
-  #                    data_prefix=data_prefix)
+  generate_baseline_cooccurrences(version=version)
+  get_visualgenome_stats(version=version)
+  get_spatialsense_stats(version=version)
+  get_wordnet_stats(version=version)
+  get_refer360_stats(butd_filename=butd_filename,
+                     image_list_file=image_list_file,
+                     n_fovs=n_fovs,
+                     angle_inc=angle_inc,
+                     data_prefix=data_prefix,
+                     version=version)
   cooccurrence_files = [
-      './cooccurrences/cooccurrence.gptneo_v3.npy',
-      './cooccurrences/cooccurrence.vg_v3.npy',
-      './cooccurrences/cooccurrence.wn_v3.npy',
-      './cooccurrences/cooccurrence.ctrl_v3.npy',
-      './cooccurrences/cooccurrence.xlm_v3.npy',
-      './cooccurrences/cooccurrence.gpt3_v3.npy',
-      './cooccurrences/cooccurrence.gpt2_v3.npy',
-      './cooccurrences/cooccurrence.gpt_v3.npy',
-      './cooccurrences/cooccurrence.ss_v3.npy',
-      #      './cooccurrences/cooccurrence.r{}butd_v3.npy'.format(angle_inc),
+      './cooccurrences/cooccurrence.gptneo_{}.npy'.format(version),
+      './cooccurrences/cooccurrence.vg_{}.npy'.format(version),
+      './cooccurrences/cooccurrence.wn_{}.npy'.format(version),
+      './cooccurrences/cooccurrence.ctrl_{}.npy'.format(version),
+      './cooccurrences/cooccurrence.xlm_{}.npy'.format(version),
+      './cooccurrences/cooccurrence.gpt3_{}.npy'.format(version),
+      './cooccurrences/cooccurrence.gpt2_{}.npy'.format(version),
+      './cooccurrences/cooccurrence.gpt_{}.npy'.format(version),
+      './cooccurrences/cooccurrence.ss_{}.npy'.format(version),
+      './cooccurrences/cooccurrence.r{}butd_{}.npy'.format(angle_inc, version),
   ]
   dump_fov_caches(butd_filename=butd_filename,
                   image_list_file=image_list_file,
@@ -932,19 +946,19 @@ if __name__ == '__main__':
                   cooccurrence_files=cooccurrence_files,
                   output_root=output_root,
                   diag_mode=0)
-  dump_fov_caches(butd_filename=butd_filename,
-                  image_list_file=image_list_file,
-                  n_fovs=n_fovs,
-                  data_prefix=data_prefix,
-                  angle_inc=angle_inc,
-                  cooccurrence_files=cooccurrence_files,
-                  output_root=output_root,
-                  diag_mode=1)
+  # dump_fov_caches(butd_filename=butd_filename,
+  #                 image_list_file=image_list_file,
+  #                 n_fovs=n_fovs,
+  #                 data_prefix=data_prefix,
+  #                 angle_inc=angle_inc,
+  #                 cooccurrence_files=cooccurrence_files,
+  #                 output_root=output_root,
+  #                 diag_mode=1)
 
   cooccurrence_baselines = [
-      './cooccurrences/cooccurrence.random100.npy',
-      './cooccurrences/cooccurrence.uniform.npy',
-      './cooccurrences/cooccurrence.diagonal.npy'
+      './cooccurrences/cooccurrence.random100_{}.npy'.format(version),
+      './cooccurrences/cooccurrence.uniform_{}.npy'.format(version),
+      './cooccurrences/cooccurrence.diagonal_{}.npy'.format(version)
   ]
   dump_fov_caches(butd_filename=butd_filename,
                   image_list_file=image_list_file,
@@ -952,6 +966,7 @@ if __name__ == '__main__':
                   angle_inc=angle_inc,
                   cooccurrence_files=cooccurrence_baselines,
                   output_root=output_root,
+                  data_prefix=data_prefix,
                   diag_mode=0)
 
   # stats_files = [
@@ -975,16 +990,16 @@ if __name__ == '__main__':
   #                outfiles=outfiles,
   #                methods=methods)
   # cooccurrence_files = [
-  #     './cooccurrences/cooccurrence.vg_v3.npy',
-  #     './cooccurrences/cooccurrence.gptneo_v3.npy',
-  #     './cooccurrences/cooccurrence.wn_v3.npy',
-  #     './cooccurrences/cooccurrence.ctrl_v3.npy',
-  #     './cooccurrences/cooccurrence.xlm_v3.npy',
-  #     './cooccurrences/cooccurrence.gpt3_v3.npy',
-  #     './cooccurrences/cooccurrence.gpt2_v3.npy',
-  #     './cooccurrences/cooccurrence.gpt_v3.npy',
-  #     './cooccurrences/cooccurrence.ss_v3.npy',
-  #     './cooccurrences/cooccurrence.r{}butd_v3.npy'.format(angle_inc),
+  #     './cooccurrences/cooccurrence.gptneo_{}.npy'.format(version),
+  #     './cooccurrences/cooccurrence.vg_{}.npy'.format(version),
+  #     './cooccurrences/cooccurrence.wn_{}.npy'.format(version),
+  #     './cooccurrences/cooccurrence.ctrl_{}.npy'.format(version),
+  #     './cooccurrences/cooccurrence.xlm_{}.npy'.format(version),
+  #     './cooccurrences/cooccurrence.gpt3_{}.npy'.format(version),
+  #     './cooccurrences/cooccurrence.gpt2_{}.npy'.format(version),
+  #     './cooccurrences/cooccurrence.gpt_{}.npy'.format(version),
+  #     './cooccurrences/cooccurrence.ss_{}.npy'.format(version),
+  #     './cooccurrences/cooccurrence.r{}butd_{}.npy'.format(angle_inc, version),
   # ]
   # evaluate_fov_caches(
   #     cache_root=cache_root,
