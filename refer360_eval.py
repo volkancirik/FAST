@@ -70,7 +70,7 @@ class Refer360Evaluation(object):
       item['gt_actions_path'] = item['path']
       self.gt[item['path_id']] = item
       self.scans.append(item['scan'])
-      if prefix in ['refer360', 'touchdown', 'td']:
+      if prefix in ['refer360', 'touchdown', 'td', 'r360tiny']:
         self.instr_ids += ['%s_%d' % (item['path_id'], i) for i in
                            range(len(item['instructions']))]
       else:
@@ -433,7 +433,7 @@ def eval_simple_agents(args):
   ''' Run simple baselines on each split. '''
   img_features = Refer360ImageFeatures.from_args(args)
 
-  if args.prefix == 'refer360':
+  if args.prefix in ['refer360', 'r360tiny']:
     width, height = 4552, 2276
   elif args.prefix in ['touchdown', 'td']:
     width, height = 3000, 1500
@@ -449,8 +449,7 @@ def eval_simple_agents(args):
 
   sim.load_maps()
 
-  # TODO add touchdown
-  if args.prefix == 'refer360':
+  if args.prefix in ['refer360', 'r360tiny']:
     splits = ['val_seen',
               'val_unseen']
   elif args.prefix in ['touchdown', 'td']:
@@ -488,7 +487,7 @@ def eval_seq2seq(args):
       args.RESULT_DIR + 'seq2seq_teacher_imagenet_%s_iter_5000.json',
       args.RESULT_DIR + 'seq2seq_sample_imagenet_%s_iter_20000.json'
   ]
-  if args.prefix == 'refer360':
+  if args.prefix in ['refer360', 'r360tiny']:
     width, height = 4552, 2276
   elif args.prefix in ['touchdown', 'td']:
     width, height = 3000, 1500
@@ -516,7 +515,7 @@ def eval_seq2seq(args):
 def eval_outfiles(args):
   outfolder = args.results_path
 
-  if args.prefix == 'refer360':
+  if args.prefix in ['refer360', 'r360tiny']:
     splits = ['val_seen',
               'val_unseen']
   elif args.prefix in ['touchdown', 'td']:
@@ -525,7 +524,7 @@ def eval_outfiles(args):
     raise NotImplementedError()
   print('splits:', splits)
 
-  if args.prefix == 'refer360':
+  if args.prefix in ['refer360', 'r360tiny']:
     width, height = 4552, 2276
   elif args.prefix in ['touchdown', 'td']:
     width, height = 3000, 1500
