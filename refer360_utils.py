@@ -138,7 +138,17 @@ def load_butd(butd_filename,
       ]
       for key, shape, dtype in decode_config:
         item[key] = np.frombuffer(base64.b64decode(item[key]), dtype=dtype)
-        item[key] = item[key].reshape(shape)
+        try:
+          item[key] = item[key].reshape(shape)
+        except:
+          if key == 'boxes':
+            dim = 4
+          elif key == 'features':
+            dim = 2048
+          else:
+            dim = 1
+          item[key] = np.zeros((boxes,dim))
+          pass
         item[key].setflags(write=False)
 
       keep_boxes = np.where(item['objects_conf'] >= threshold)[0]
