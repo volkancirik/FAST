@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 from collections import defaultdict
 import argparse
+import shutil
 
 import utils
 from utils import read_vocab, Tokenizer, vocab_pad_idx, timeSince, try_cuda
@@ -141,7 +142,10 @@ def train(args, train_env, agent, optimizers, n_iters, val_envs=None):
           args.RESULT_DIR, get_model_prefix(
               args, train_env.image_features_list),
           env_name, iter)
-
+      best_path = '%s/%s_%s.best.' % (
+          args.RESULT_DIR, get_model_prefix(
+              args, train_env.image_features_list),
+          env_name)
       # Get validation distance from goal under evaluation conditions
       agent.test(use_dropout=False, feedback='argmax')
 
@@ -189,6 +193,9 @@ def train(args, train_env, agent, optimizers, n_iters, val_envs=None):
               # last_model_saved[key] = [agent.results_path] +\
               last_model_saved[key] = [] +\
                   list(agent.modules_paths(model_path))
+
+              best_file = best_path + '%s' % (metric) + '.json'
+              shutil.copyfile(agent.results_path, best_file)
 
     print(('%s (%d %d%%) %s' % (
         timeSince(start, float(iter)/n_iters),
