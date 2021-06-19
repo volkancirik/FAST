@@ -334,7 +334,7 @@ def make_follower(args, vocab,
 
 def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
   setup(args.seed)
-  if args.prefix in ['refer360', 'r360tiny']:
+  if args.prefix in ['refer360', 'r360tiny', 'RxR_en-ALL']:
     width, height = 4552, 2276
   elif args.prefix in ['touchdown', 'td']:
     width, height = 3000, 1500
@@ -394,7 +394,7 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
 
 
 def train_setup(args, train_splits=['train']):
-  if args.prefix in ['refer360', 'r2r', 'R2R', 'REVERIE', 'r360tiny']:
+  if args.prefix in ['refer360', 'r2r', 'R2R', 'REVERIE', 'r360tiny', 'RxR_en-ALL']:
     val_splits = ['val_seen', 'val_unseen']
   elif args.prefix in ['touchdown', 'td']:
     val_splits = ['dev']
