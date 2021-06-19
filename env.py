@@ -18,6 +18,11 @@ import pdb
 import MatterSim
 import os
 import sys
+from refer360_utils import load_vectors
+from refer360_utils import MODEL2PREFIX
+from refer360_utils import MODEL2FEATURE_DIM
+from refer360_utils import get_object_dictionaries
+import base64
 file_path = os.path.dirname(__file__)
 module_path = os.path.abspath(os.path.join(file_path))
 sys.path.append(module_path)
@@ -324,18 +329,21 @@ class ImageFeatures(object):
   def from_args(args):
     feats = []
     for image_feature_type in sorted(args.image_feature_type):
-      if 'next_step' in image_feature_type:
-        feats.append(NextStepImageFeatures())
-      if 'oracle' in image_feature_type:
-        feats.append(OracleImageFeatures())
+      if 'butd' in image_feature_type:
+        feats.append(BottomUpTopDownFeatures(use_object_embeddings=args.use_object_embeddings,
+                                             nextstep=args.nextstep))
+      if 'reverie_oh' in image_feature_type:
+        feats.append(ReverieOneHotImageFeatures())
+      if 'reverie_oh_nextstep' in image_feature_type:
+        feats.append(ReverieOneHotNextStepFeatures())
+      if 'reverie_we' in image_feature_type:
+        feats.append(ReverieWordEmbeddingsFeatures())
+      if 'reverie_we_nextstep' in image_feature_type:
+        feats.append(ReverieWordEmbeddingsNextStepFeatures())
+
       if 'none' in image_feature_type:
         feats.append(NoImageFeatures())
       if 'bottom_up_attention' in image_feature_type:
-        # feats.append(BottomUpImageFeatures(
-        #     args.bottom_up_detections,
-        #     #precomputed_cache_path=paths.bottom_up_feature_cache_path,
-        #     precomputed_cache_dir=paths.bottom_up_feature_cache_dir,
-        # ))
         raise NotImplementedError(
             'bottom_up_attention has not been implemented for panorama environment')
       if 'convolutional_attention' in image_feature_type:
@@ -347,9 +355,9 @@ class ImageFeatures(object):
         raise NotImplementedError(
             'convolutional_attention has not been implemented for panorama environment')
       if 'mean_pooled' in image_feature_type:
-        feats.append(MeanPooledImageFeatures(args.image_feature_datasets))
-      if 'clip' in image_feature_type:
-        feats.append(ClipImageFeatures(args.image_feature_datasets))
+        feats.append(MeanPooledImageFeatures(args.image_feature_datasets,
+                                             feature_model=args.feature_model,
+                                             nextstep=args.nextstep))
 
       assert len(feats) >= 1
     return feats
@@ -358,19 +366,22 @@ class ImageFeatures(object):
   def add_args(argument_parser):
     argument_parser.add_argument('--image_feature_type', nargs='+',
                                  choices=['none',
-                                          'clip',
                                           'mean_pooled',
                                           'convolutional_attention',
                                           'bottom_up_attention',
                                           'random',
                                           'oracle',
-                                          'mean_pooled_oracle',
-                                          'next_step',
-                                          'mean_pooled_next_step'],
+                                          'nsbu',
+                                          'nswe',
+                                          'nsoh',
+                                          'nsim'],
                                  default=['mean_pooled'])
     argument_parser.add_argument('--image_attention_size', type=int)
     argument_parser.add_argument('--image_feature_datasets', nargs='+', choices=['imagenet', 'places365'], default=[
                                  'imagenet'], help='only applicable to mean_pooled or convolutional_attention options for --image_feature_type')
+    argument_parser.add_argument('--feature_model',
+                                 choices=['resnet', 'clip'],
+                                 default='clip')
     argument_parser.add_argument(
         '--bottom_up_detections', type=int, default=20)
     argument_parser.add_argument(
@@ -419,16 +430,24 @@ class RandImageFeatures(ImageFeatures):
 
 
 class MeanPooledImageFeatures(ImageFeatures):
-  def __init__(self, image_feature_datasets):
+  def __init__(self, image_feature_datasets,
+               feature_model='resnet',
+               nextstep=True):
     image_feature_datasets = sorted(image_feature_datasets)
-    self.image_feature_datasets = image_feature_datasets
 
-    self.mean_pooled_feature_stores = [paths.mean_pooled_feature_store_paths[dataset]
+    feature_dim = MODEL2FEATURE_DIM[feature_model]
+    self.feature_model = feature_model
+    self.feature_prefix = MODEL2PREFIX[feature_model]
+    self.image_feature_datasets = image_feature_datasets
+    self.nextstep = nextstep
+
+    self.mean_pooled_feature_stores = [paths.mean_pooled_feature_store_paths[feature_model]
                                        for dataset in image_feature_datasets]
-    self.feature_dim = MeanPooledImageFeatures.MEAN_POOLED_DIM * \
+    self.feature_dim = feature_dim * \
         len(image_feature_datasets)
     print('Loading image features from %s' %
           ', '.join(self.mean_pooled_feature_stores))
+    print('Feature size', self.feature_dim)
     tsv_fieldnames = ['scanId', 'viewpointId',
                       'image_w', 'image_h', 'vfov', 'features']
     self.features = defaultdict(list)
@@ -442,14 +461,44 @@ class MeanPooledImageFeatures(ImageFeatures):
           assert int(item['vfov']) == ImageFeatures.VFOV
           long_id = self._make_id(item['scanId'], item['viewpointId'])
           features = np.frombuffer(decode_base64(item['features']), dtype=np.float32).reshape(
-              (ImageFeatures.NUM_VIEWS, ImageFeatures.MEAN_POOLED_DIM))
+              (ImageFeatures.NUM_VIEWS, self.feature_dim))
           self.features[long_id].append(features)
+
     assert all(len(feats) == len(self.mean_pooled_feature_stores)
                for feats in self.features.values())
     self.features = {
         long_id: np.concatenate(feats, axis=1)
         for long_id, feats in self.features.items()
     }
+    if self.nextstep:
+      self._add_nextstep()
+
+  def _add_nextstep(self):
+    print('nextstep features will be created')
+    connect_folder = os.path.abspath(
+        os.path.join(file_path, '..', '..', 'connectivity'))
+
+    scans = []
+    for name in os.listdir(connect_folder):
+      if name.split('.')[1] == 'json':
+        scan = name.split('_')[0]
+        scans.append(scan)
+    graph = load_nav_graphs(scans)
+    nextstep_features = {}
+
+    missed_pano = 0
+    for long_id in self.features:
+      scan = long_id.split('_')[0]
+      pano = long_id.split('_')[1]
+      nextstep_features[long_id] = self.features[long_id]
+      if pano not in graph[scan]:
+        missed_pano += 1
+        continue
+      for neighbor in graph[scan][pano]:
+        neighbor_feature = self.features['{}_{}'.format(scan, neighbor)]
+        nextstep_features[long_id] += neighbor_feature
+    print('missed {} panos'.format(missed_pano))
+    self.features = nextstep_features
 
   def _make_id(self, scanId, viewpointId):
     return scanId + '_' + viewpointId
@@ -460,61 +509,16 @@ class MeanPooledImageFeatures(ImageFeatures):
     return self.features[long_id]
 
   def get_name(self):
-    name = '+'.join(sorted(self.image_feature_datasets))
-    name = '{}_mean_pooled'.format(name)
+    name = '{}_mean_pooled'.format(self.feature_model)
+    if self.nextstep:
+      name += '_nextstep'
     return name
 
 
-class ClipImageFeatures(ImageFeatures):
-  def __init__(self, image_feature_datasets):
-    image_feature_datasets = sorted(image_feature_datasets)
-    self.image_feature_datasets = image_feature_datasets
-
-    self.mean_pooled_feature_stores = [
-        paths.mean_pooled_feature_store_paths['clip']]
-    self.feature_dim = 512
-    print('Loading image features from %s' %
-          ', '.join(self.mean_pooled_feature_stores))
-    tsv_fieldnames = ['scanId', 'viewpointId',
-                      'image_w', 'image_h', 'vfov', 'features']
-    self.features = defaultdict(list)
-    for mpfs in self.mean_pooled_feature_stores:
-      with open(mpfs, 'rt') as tsv_in_file:
-        reader = csv.DictReader(
-            tsv_in_file, delimiter='\t', fieldnames=tsv_fieldnames)
-        for item in reader:
-          assert int(item['image_h']) == ImageFeatures.IMAGE_H
-          assert int(item['image_w']) == ImageFeatures.IMAGE_W
-          assert int(item['vfov']) == ImageFeatures.VFOV
-          long_id = self._make_id(item['scanId'], item['viewpointId'])
-          features = np.frombuffer(decode_base64(item['features']), dtype=np.float32).reshape(
-              (ImageFeatures.NUM_VIEWS, 512))
-          self.features[long_id].append(features)
-    assert all(len(feats) == len(self.mean_pooled_feature_stores)
-               for feats in self.features.values())
-    self.features = {
-        long_id: np.concatenate(feats, axis=1)
-        for long_id, feats in self.features.items()
-    }
-
-  def _make_id(self, scanId, viewpointId):
-    return scanId + '_' + viewpointId
-
-  def get_features(self, state):
-    long_id = self._make_id(state.scanId, state.location.viewpointId)
-    # Return feature of all the 36 views
-    return self.features[long_id]
-
-  def get_name(self):
-    name = '+'.join(sorted(self.image_feature_datasets))
-    name = '{}_mean_pooled'.format(name)
-    return name
-
-
-class OracleImageFeatures(ImageFeatures):
+class ReverieOneHotImageFeatures(ImageFeatures):
   def __init__(self, box_root='./tasks/REVERIE/data/BBox/'):
 
-    print('Loading oracle features')
+    print('Loading ReverieOneHotImageFeatures')
     self.features = defaultdict(list)
 
     name2count = defaultdict(int)
@@ -552,7 +556,7 @@ class OracleImageFeatures(ImageFeatures):
         obj_idx += 1
 
     feature_dim = len(name2objid)
-    print('Oracle Feature Size:', feature_dim)
+    print('Feature Size:', feature_dim)
     self.feature_dim = feature_dim
     self.features = {}
     for k in data.keys():
@@ -574,21 +578,21 @@ class OracleImageFeatures(ImageFeatures):
     return self.features[long_id]
 
   def get_name(self):
-    name = '_with_oracle'
+    name = 'reverie_oh'
     return name
 
 
-class NextStepImageFeatures(ImageFeatures):
+class ReverieOneHotNextStepFeatures(ImageFeatures):
   def __init__(self, box_root='./tasks/FAST/data/BBOX/'):
 
-    print('Loading next step features')
+    print('Loading ReverieOneHotNextStepFeatures')
     self.features = defaultdict(list)
 
     name2count = defaultdict(int)
 
     data = {}
     for name in os.listdir(box_root):
-      extension = name.split('.')[-1]
+      extension = name.split(".")[-1]
       if extension == 'json':
         bboxes = json.load(open(os.path.join(box_root, name), 'r'))
         scanId = name.split('_')[0]
@@ -622,7 +626,7 @@ class NextStepImageFeatures(ImageFeatures):
         obj_idx += 1
 
     feature_dim = len(name2objid)
-    print('NextStep Feature Size:', feature_dim)
+    print('Feature Size:', feature_dim)
     self.feature_dim = feature_dim
     self.features = {}
     for k in data.keys():
@@ -644,7 +648,288 @@ class NextStepImageFeatures(ImageFeatures):
     return self.features[long_id]
 
   def get_name(self):
-    name = '_with_nextstep'
+    name = 'reverie_oh_nextstep'
+    return name
+
+
+class ReverieWordEmbeddingsFeatures(ImageFeatures):
+  def __init__(self,
+               box_root='./tasks/REVERIE/data/BBox/',
+               word_embedding_path='./tasks/FAST/data/cc.en.300.vec'):
+
+    print('Loading ReverieWordEmbeddingFeatures')
+    self.features = defaultdict(list)
+    self.feature_dim = 300
+    print('Feature Size:', self.feature_dim)
+
+    name2count = defaultdict(int)
+
+    data = {}
+    for name in os.listdir(box_root):
+      extension = name.split('.')[-1]
+      if extension == 'json':
+        bboxes = json.load(open(os.path.join(box_root, name), 'r'))
+        scanId = name.split('_')[0]
+        viewpointId = name.split('_')[1].split('.')[0]
+        idx = self._make_id(scanId, viewpointId)
+
+        fov2object = defaultdict(list)
+        for bbox_idx in bboxes[viewpointId]:
+          name = bboxes[viewpointId][bbox_idx]['name']
+          visible_pos = bboxes[viewpointId][bbox_idx]['visible_pos']
+          bbox2d = bboxes[viewpointId][bbox_idx]['bbox2d']
+
+          name2count[name] += 1
+
+          for bbox, pos in zip(bbox2d, visible_pos):
+            fov2object[pos].append((name, bbox))
+        data[idx] = fov2object
+
+    THRESHOLD = 5
+
+    objid2name = dict()
+    name2objid = dict()
+    obj_idx = 0
+    for name in name2count.keys():
+      if name2count[name] >= THRESHOLD:
+        name2objid[name] = obj_idx
+        objid2name[obj_idx] = name
+        obj_idx += 1
+
+    self.features = {}
+
+    w2v = load_vectors(word_embedding_path, name2objid)
+    missing = []
+    for w in name2objid:
+      if w not in w2v:
+        missing += [w]
+    print(' '.join(missing))
+
+    for k in data.keys():
+      feats = np.zeros(
+          (ImageFeatures.NUM_VIEWS, self.feature_dim), dtype=np.float32)
+      for pos in data[k].keys():
+        for (name, box) in data[k][pos]:
+          if name in w2v:
+            vector = w2v[name]
+            feats[pos, :] += vector
+      self.features[k] = feats
+
+  def _make_id(self, scanId, viewpointId):
+    return scanId + '_' + viewpointId
+
+  def get_features(self, state):
+    long_id = self._make_id(state.scanId, state.location.viewpointId)
+    # Return feature of all the 36 views
+    return self.features[long_id]
+
+  def get_name(self):
+    name = 'reverie_we'
+    return name
+
+
+class ReverieWordEmbeddingsNextStepFeatures(ImageFeatures):
+  def __init__(self,
+               box_root='./tasks/FAST/data/BBOX/',
+               word_embedding_path='./tasks/FAST/data/cc.en.300.vec'):
+
+    print('Loading ReverieWordEmbeddingsNextStepFeatures')
+    self.features = defaultdict(list)
+    self.feature_dim = 300
+    print('Feature Size:', self.feature_dim)
+
+    name2count = defaultdict(int)
+
+    data = {}
+    for name in os.listdir(box_root):
+      extension = name.split(".")[-1]
+      if extension == 'json':
+        bboxes = json.load(open(os.path.join(box_root, name), 'r'))
+        scanId = name.split('_')[0]
+        viewpointId = name.split('_')[1].split('.')[0]
+        idx = self._make_id(scanId, viewpointId)
+
+        fov2object = defaultdict(list)
+
+        for vp in bboxes.keys():
+          if vp == viewpointId:
+            continue
+          for bbox_idx in bboxes[vp]:
+            name = bboxes[vp][bbox_idx]['name']
+            name = name.split('#')[0].split('/')[0]
+            visible_pos = bboxes[vp][bbox_idx]['visible_pos']
+            bbox2d = bboxes[vp][bbox_idx]['bbox2d']
+            name2count[name] += 1
+
+            for bbox, pos in zip(bbox2d, visible_pos):
+              fov2object[pos].append((name, bbox))
+        data[idx] = fov2object
+    THRESHOLD = 5
+
+    objid2name = dict()
+    name2objid = dict()
+    obj_idx = 0
+
+    for name in name2count.keys():
+      if name2count[name] >= THRESHOLD:
+        name2objid[name] = obj_idx
+        objid2name[obj_idx] = name
+        obj_idx += 1
+
+    self.features = {}
+
+    w2v = load_vectors(word_embedding_path, name2objid)
+    missing = []
+    for w in name2objid:
+      if w not in w2v:
+        missing += [w]
+    print(' '.join(missing))
+
+    for k in data.keys():
+      feats = np.zeros(
+          (ImageFeatures.NUM_VIEWS, self.feature_dim), dtype=np.float32)
+      for pos in data[k].keys():
+        for (name, box) in data[k][pos]:
+          if name in w2v:
+            vector = w2v[name]
+            feats[pos, :] += vector
+      self.features[k] = feats
+
+  def _make_id(self, scanId, viewpointId):
+    return scanId + '_' + viewpointId
+
+  def get_features(self, state):
+    long_id = self._make_id(state.scanId, state.location.viewpointId)
+    # Return feature of all the 36 views
+    return self.features[long_id]
+
+  def get_name(self):
+    name = 'reverie_we_nextstep'
+    return name
+
+
+class BottomUpTopDownFeatures(ImageFeatures):
+  def __init__(self,
+               bottomup_filename='./img_features/mp_obj36.tsv',
+               use_object_embeddings=False,
+               word_embedding_path='./tasks/FAST/data/cc.en.300.vec',
+               obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json',
+               threshold=0.5,
+               nextstep=False):
+
+    print('Loading BottomUpTopDownFeatures')
+    self.features = defaultdict(list)
+
+    self.use_object_embeddings = use_object_embeddings
+    if self.use_object_embeddings:
+      self.objemb, self.feature_dim = True, 300
+
+      vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name = get_object_dictionaries(
+          obj_dict_file, return_all=True)
+      self.name2vg, self.vg2name = name2vg, vg2name
+
+      print('Loading word embeddings...')
+      self.w2v = load_vectors(word_embedding_path, self.name2vg)
+      missing = []
+      for w in self.name2vg:
+        if w not in self.w2v:
+          missing += [w]
+      print('Missing object names:', ' '.join(missing))
+    else:
+      self.objemb, self.feature_dim = False, 2048
+      self.w2v, self.vg2name, self.name2vg = None, None, None
+
+    self.nextstep = nextstep
+    print('Feature dim:', self.feature_dim)
+
+    FIELDNAMES = ["img_id", "img_h", "img_w", "objects_id", "objects_conf",
+                  "attrs_id", "attrs_conf", "num_boxes", "boxes", "features"]
+    self.features = {}
+
+    with open(bottomup_filename) as f:
+      reader = csv.DictReader(f, FIELDNAMES, delimiter="\t")
+      for i, item in enumerate(reader):
+
+        for key in ['img_h', 'img_w', 'num_boxes']:
+          item[key] = int(item[key])
+
+        boxes = item['num_boxes']
+        decode_config = [
+            ('objects_id', (boxes, ), np.int64),
+            ('objects_conf', (boxes, ), np.float32),
+            ('attrs_id', (boxes, ), np.int64),
+            ('attrs_conf', (boxes, ), np.float32),
+            ('boxes', (boxes, 4), np.float32),
+            ('features', (boxes, -1), np.float32),
+        ]
+        for key, shape, dtype in decode_config:
+          item[key] = np.frombuffer(base64.b64decode(item[key]), dtype=dtype)
+          item[key] = item[key].reshape(shape)
+          item[key].setflags(write=False)
+
+        scanId, viewpointId = item['img_id'].split('.')[0].split('_')
+        fovid = int(item['img_id'].split('.')[1])
+        idx = self._make_id(scanId, viewpointId)
+
+        if idx not in self.features:
+          self.features[idx] = np.zeros(
+              (ImageFeatures.NUM_VIEWS, self.feature_dim), dtype=np.float32)
+
+        if self.use_object_embeddings:
+          keep_boxes = np.where(item['objects_conf'] >= threshold)[0]
+          obj_ids = item['objects_id'][keep_boxes]
+          emb_feats = np.zeros((obj_ids.shape[0], 300), dtype=np.float32)
+          for ii, obj_id in enumerate(obj_ids):
+            obj_name = vg2name.get(obj_id, '</s>')
+            emb_feats[ii, :] = self.w2v.get(obj_name, self.w2v['</s>'])
+          feats = emb_feats
+        else:
+          feats = np.sum(item['features'], axis=0)
+        self.features[idx][fovid, :] = feats
+    if self.nextstep:
+      self._add_nextstep()
+
+  def _make_id(self, scanId, viewpointId):
+    return scanId + '_' + viewpointId
+
+  def _add_nextstep(self):
+    print('nextstep features will be created')
+    connect_folder = os.path.abspath(
+        os.path.join(file_path, '..', '..', 'connectivity'))
+
+    scans = []
+    for name in os.listdir(connect_folder):
+      if name.split('.')[1] == 'json':
+        scan = name.split('_')[0]
+        scans.append(scan)
+    graph = load_nav_graphs(scans)
+    nextstep_features = {}
+
+    missed_pano = 0
+    for long_id in self.features:
+      scan = long_id.split('_')[0]
+      pano = long_id.split('_')[1]
+      nextstep_features[long_id] = self.features[long_id]
+      if pano not in graph[scan]:
+        missed_pano += 1
+        continue
+      for neighbor in graph[scan][pano]:
+        neighbor_feature = self.features['{}_{}'.format(scan, neighbor)]
+        nextstep_features[long_id] += neighbor_feature
+    print('missed {} panos'.format(missed_pano))
+    self.features = nextstep_features
+
+  def get_features(self, state):
+    long_id = self._make_id(state.scanId, state.location.viewpointId)
+    # Return feature of all the 36 views
+    return self.features[long_id]
+
+  def get_name(self):
+    name = 'butd'
+    if self.use_object_embeddings:
+      name += '_oe'
+    if self.nextstep:
+      name += '_nextstep'
     return name
 
 

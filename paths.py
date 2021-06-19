@@ -15,6 +15,7 @@ convolutional_feature_store_paths = {
 }
 
 mean_pooled_feature_store_paths = {
+    'resnet': 'img_features/ResNet-152-imagenet.tsv',
     'imagenet': 'img_features/ResNet-152-imagenet.tsv',
     'places365': 'img_features/ResNet-152-places365.tsv',
     'clip': 'img_features/clip.tsv'

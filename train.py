@@ -503,6 +503,8 @@ def make_arg_parser():
   parser.add_argument('--use_gt_actions', action='store_true')
   parser.add_argument('--use_visited_embeddings', action='store_true')
   parser.add_argument('--use_oracle_embeddings', action='store_true')
+  parser.add_argument(
+      '--use_object_embeddings', action='store_true')
 
   parser.add_argument('--n_iters', type=int, default=100000)
   parser.add_argument('--log_every', type=int, default=5000)
@@ -539,6 +541,7 @@ def make_arg_parser():
   parser.add_argument('--deaf', action='store_true')
   parser.add_argument('--blind', action='store_true')
   parser.add_argument('--no_lookahead', action='store_true')
+  parser.add_argument('--nextstep', action='store_true')
 
   parser.add_argument('--verbose', action='store_true')
 

@@ -563,5 +563,5 @@ if __name__ == '__main__':
   parser.add_argument('--results_path', type=str,
                       default='')
 
-  #utils.run(parser, eval_outfiles)
-  utils.run(parser, eval_simple_agents)
+  utils.run(parser, eval_outfiles)
+  #utils.run(parser, eval_simple_agents)

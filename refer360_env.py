@@ -150,8 +150,6 @@ class Refer360ImageFeatures(object):
                                  default='')
     argument_parser.add_argument('--refer360_prior_method',
                                  default='')
-    argument_parser.add_argument(
-        '--use_object_embeddings', action='store_true')
 
   def get_name(self):
     raise NotImplementedError('base class does not have get_name')
