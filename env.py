@@ -332,14 +332,9 @@ class ImageFeatures(object):
       if 'butd' in image_feature_type:
         feats.append(BottomUpTopDownFeatures(use_object_embeddings=args.use_object_embeddings,
                                              nextstep=args.nextstep))
-      if 'reverie_oh' in image_feature_type:
-        feats.append(ReverieOneHotImageFeatures())
-      if 'reverie_oh_nextstep' in image_feature_type:
-        feats.append(ReverieOneHotNextStepFeatures())
-      if 'reverie_we' in image_feature_type:
-        feats.append(ReverieWordEmbeddingsFeatures())
-      if 'reverie_we_nextstep' in image_feature_type:
-        feats.append(ReverieWordEmbeddingsNextStepFeatures())
+      if 'reverie' in image_feature_type:
+        feats.append(ReverieFeatures(use_object_embeddings=args.use_object_embeddings,
+                                             nextstep=args.nextstep))
 
       if 'none' in image_feature_type:
         feats.append(NoImageFeatures())
@@ -370,11 +365,8 @@ class ImageFeatures(object):
                                           'convolutional_attention',
                                           'bottom_up_attention',
                                           'random',
-                                          'oracle',
-                                          'nsbu',
-                                          'nswe',
-                                          'nsoh',
-                                          'nsim'],
+                                          'butd',
+                                          'reverie'],
                                  default=['mean_pooled'])
     argument_parser.add_argument('--image_attention_size', type=int)
     argument_parser.add_argument('--image_feature_datasets', nargs='+', choices=['imagenet', 'places365'], default=[
@@ -514,12 +506,17 @@ class MeanPooledImageFeatures(ImageFeatures):
       name += '_nextstep'
     return name
 
+class ReverieFeatures(ImageFeatures):
+  def __init__(self,
+               box_root='./tasks/FAST/data/BBox/',
+               word_embedding_path='./tasks/FAST/data/cc.en.300.vec',
+               nextstep = False,
+               use_object_embeddings = False):
 
-class ReverieOneHotImageFeatures(ImageFeatures):
-  def __init__(self, box_root='./tasks/REVERIE/data/BBox/'):
-
-    print('Loading ReverieOneHotImageFeatures')
+    print('Loading ReverieFeatures')
     self.features = defaultdict(list)
+    self.nextstep = nextstep
+    self.use_object_embeddings = use_object_embeddings
 
     name2count = defaultdict(int)
 
@@ -537,148 +534,6 @@ class ReverieOneHotImageFeatures(ImageFeatures):
           name = bboxes[viewpointId][bbox_idx]['name']
           visible_pos = bboxes[viewpointId][bbox_idx]['visible_pos']
           bbox2d = bboxes[viewpointId][bbox_idx]['bbox2d']
-
-          name2count[name] += 1
-
-          for bbox, pos in zip(bbox2d, visible_pos):
-            fov2object[pos].append((name, bbox))
-        data[idx] = fov2object
-    feature_dim = 0
-    THRESHOLD = 5
-
-    objid2name = dict()
-    name2objid = dict()
-    obj_idx = 0
-    for name in name2count.keys():
-      if name2count[name] >= THRESHOLD:
-        name2objid[name] = obj_idx
-        objid2name[obj_idx] = name
-        obj_idx += 1
-
-    feature_dim = len(name2objid)
-    print('Feature Size:', feature_dim)
-    self.feature_dim = feature_dim
-    self.features = {}
-    for k in data.keys():
-      feats = np.zeros(
-          (ImageFeatures.NUM_VIEWS, feature_dim), dtype=np.float32)
-      for pos in data[k].keys():
-        for (name, box) in data[k][pos]:
-          if name in name2objid:
-            obj_id = name2objid[name]
-            feats[pos, obj_id] = 1.0
-      self.features[k] = feats
-
-  def _make_id(self, scanId, viewpointId):
-    return scanId + '_' + viewpointId
-
-  def get_features(self, state):
-    long_id = self._make_id(state.scanId, state.location.viewpointId)
-    # Return feature of all the 36 views
-    return self.features[long_id]
-
-  def get_name(self):
-    name = 'reverie_oh'
-    return name
-
-
-class ReverieOneHotNextStepFeatures(ImageFeatures):
-  def __init__(self, box_root='./tasks/FAST/data/BBOX/'):
-
-    print('Loading ReverieOneHotNextStepFeatures')
-    self.features = defaultdict(list)
-
-    name2count = defaultdict(int)
-
-    data = {}
-    for name in os.listdir(box_root):
-      extension = name.split(".")[-1]
-      if extension == 'json':
-        bboxes = json.load(open(os.path.join(box_root, name), 'r'))
-        scanId = name.split('_')[0]
-        viewpointId = name.split('_')[1].split('.')[0]
-        idx = self._make_id(scanId, viewpointId)
-
-        fov2object = defaultdict(list)
-
-        for vp in bboxes.keys():
-          if vp == viewpointId:
-            continue
-          for bbox_idx in bboxes[vp]:
-            name = bboxes[vp][bbox_idx]['name']
-            visible_pos = bboxes[vp][bbox_idx]['visible_pos']
-            bbox2d = bboxes[vp][bbox_idx]['bbox2d']
-            name2count[name] += 1
-
-            for bbox, pos in zip(bbox2d, visible_pos):
-              fov2object[pos].append((name, bbox))
-        data[idx] = fov2object
-    feature_dim = 0
-    THRESHOLD = 5
-
-    objid2name = dict()
-    name2objid = dict()
-    obj_idx = 0
-    for name in name2count.keys():
-      if name2count[name] >= THRESHOLD:
-        name2objid[name] = obj_idx
-        objid2name[obj_idx] = name
-        obj_idx += 1
-
-    feature_dim = len(name2objid)
-    print('Feature Size:', feature_dim)
-    self.feature_dim = feature_dim
-    self.features = {}
-    for k in data.keys():
-      feats = np.zeros(
-          (ImageFeatures.NUM_VIEWS, feature_dim), dtype=np.float32)
-      for pos in data[k].keys():
-        for (name, box) in data[k][pos]:
-          if name in name2objid:
-            obj_id = name2objid[name]
-            feats[pos, obj_id] = 1.0
-      self.features[k] = feats
-
-  def _make_id(self, scanId, viewpointId):
-    return scanId + '_' + viewpointId
-
-  def get_features(self, state):
-    long_id = self._make_id(state.scanId, state.location.viewpointId)
-    # Return feature of all the 36 views
-    return self.features[long_id]
-
-  def get_name(self):
-    name = 'reverie_oh_nextstep'
-    return name
-
-
-class ReverieWordEmbeddingsFeatures(ImageFeatures):
-  def __init__(self,
-               box_root='./tasks/REVERIE/data/BBox/',
-               word_embedding_path='./tasks/FAST/data/cc.en.300.vec'):
-
-    print('Loading ReverieWordEmbeddingFeatures')
-    self.features = defaultdict(list)
-    self.feature_dim = 300
-    print('Feature Size:', self.feature_dim)
-
-    name2count = defaultdict(int)
-
-    data = {}
-    for name in os.listdir(box_root):
-      extension = name.split('.')[-1]
-      if extension == 'json':
-        bboxes = json.load(open(os.path.join(box_root, name), 'r'))
-        scanId = name.split('_')[0]
-        viewpointId = name.split('_')[1].split('.')[0]
-        idx = self._make_id(scanId, viewpointId)
-
-        fov2object = defaultdict(list)
-        for bbox_idx in bboxes[viewpointId]:
-          name = bboxes[viewpointId][bbox_idx]['name']
-          visible_pos = bboxes[viewpointId][bbox_idx]['visible_pos']
-          bbox2d = bboxes[viewpointId][bbox_idx]['bbox2d']
-
           name2count[name] += 1
 
           for bbox, pos in zip(bbox2d, visible_pos):
@@ -696,7 +551,13 @@ class ReverieWordEmbeddingsFeatures(ImageFeatures):
         objid2name[obj_idx] = name
         obj_idx += 1
 
+    if self.use_object_embeddings:
+      feature_dim = 300
+    else:
+      feature_dim = len(name2objid)
+    self.feature_dim = feature_dim
     self.features = {}
+    print('Feature dim:', self.feature_dim)
 
     w2v = load_vectors(word_embedding_path, name2objid)
     missing = []
@@ -710,13 +571,46 @@ class ReverieWordEmbeddingsFeatures(ImageFeatures):
           (ImageFeatures.NUM_VIEWS, self.feature_dim), dtype=np.float32)
       for pos in data[k].keys():
         for (name, box) in data[k][pos]:
-          if name in w2v:
-            vector = w2v[name]
-            feats[pos, :] += vector
+          if self.use_object_embeddings:
+            if name in w2v:
+              vector = w2v[name]
+              feats[pos, :] += vector
+          elif name in name2objid:
+            obj_id = name2objid[name]
+            feats[pos, obj_id] = 1.0
       self.features[k] = feats
+    if self.nextstep:
+      self._add_nextstep()
 
   def _make_id(self, scanId, viewpointId):
     return scanId + '_' + viewpointId
+
+  def _add_nextstep(self):
+    print('nextstep features will be created')
+    connect_folder = os.path.abspath(
+        os.path.join(file_path, '..', '..', 'connectivity'))
+
+    scans = []
+    for name in os.listdir(connect_folder):
+      if name.split('.')[1] == 'json':
+        scan = name.split('_')[0]
+        scans.append(scan)
+    graph = load_nav_graphs(scans)
+    nextstep_features = {}
+
+    missed_pano = 0
+    for long_id in self.features:
+      scan = long_id.split('_')[0]
+      pano = long_id.split('_')[1]
+      nextstep_features[long_id] = self.features[long_id]
+      if pano not in graph[scan]:
+        missed_pano += 1
+        continue
+      for neighbor in graph[scan][pano]:
+        neighbor_feature = self.features['{}_{}'.format(scan, neighbor)]
+        nextstep_features[long_id] += neighbor_feature
+    print('missed {} panos'.format(missed_pano))
+    self.features = nextstep_features
 
   def get_features(self, state):
     long_id = self._make_id(state.scanId, state.location.viewpointId)
@@ -724,87 +618,11 @@ class ReverieWordEmbeddingsFeatures(ImageFeatures):
     return self.features[long_id]
 
   def get_name(self):
-    name = 'reverie_we'
-    return name
-
-
-class ReverieWordEmbeddingsNextStepFeatures(ImageFeatures):
-  def __init__(self,
-               box_root='./tasks/FAST/data/BBOX/',
-               word_embedding_path='./tasks/FAST/data/cc.en.300.vec'):
-
-    print('Loading ReverieWordEmbeddingsNextStepFeatures')
-    self.features = defaultdict(list)
-    self.feature_dim = 300
-    print('Feature Size:', self.feature_dim)
-
-    name2count = defaultdict(int)
-
-    data = {}
-    for name in os.listdir(box_root):
-      extension = name.split(".")[-1]
-      if extension == 'json':
-        bboxes = json.load(open(os.path.join(box_root, name), 'r'))
-        scanId = name.split('_')[0]
-        viewpointId = name.split('_')[1].split('.')[0]
-        idx = self._make_id(scanId, viewpointId)
-
-        fov2object = defaultdict(list)
-
-        for vp in bboxes.keys():
-          if vp == viewpointId:
-            continue
-          for bbox_idx in bboxes[vp]:
-            name = bboxes[vp][bbox_idx]['name']
-            name = name.split('#')[0].split('/')[0]
-            visible_pos = bboxes[vp][bbox_idx]['visible_pos']
-            bbox2d = bboxes[vp][bbox_idx]['bbox2d']
-            name2count[name] += 1
-
-            for bbox, pos in zip(bbox2d, visible_pos):
-              fov2object[pos].append((name, bbox))
-        data[idx] = fov2object
-    THRESHOLD = 5
-
-    objid2name = dict()
-    name2objid = dict()
-    obj_idx = 0
-
-    for name in name2count.keys():
-      if name2count[name] >= THRESHOLD:
-        name2objid[name] = obj_idx
-        objid2name[obj_idx] = name
-        obj_idx += 1
-
-    self.features = {}
-
-    w2v = load_vectors(word_embedding_path, name2objid)
-    missing = []
-    for w in name2objid:
-      if w not in w2v:
-        missing += [w]
-    print(' '.join(missing))
-
-    for k in data.keys():
-      feats = np.zeros(
-          (ImageFeatures.NUM_VIEWS, self.feature_dim), dtype=np.float32)
-      for pos in data[k].keys():
-        for (name, box) in data[k][pos]:
-          if name in w2v:
-            vector = w2v[name]
-            feats[pos, :] += vector
-      self.features[k] = feats
-
-  def _make_id(self, scanId, viewpointId):
-    return scanId + '_' + viewpointId
-
-  def get_features(self, state):
-    long_id = self._make_id(state.scanId, state.location.viewpointId)
-    # Return feature of all the 36 views
-    return self.features[long_id]
-
-  def get_name(self):
-    name = 'reverie_we_nextstep'
+    name = 'reverie'
+    if self.use_object_embeddings:
+      name += '_oe'
+    if self.nextstep:
+      name += '_nextstep'
     return name
 
 
