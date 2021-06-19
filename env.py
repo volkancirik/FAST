@@ -702,7 +702,8 @@ class BottomUpTopDownFeatures(ImageFeatures):
             emb_feats[ii, :] = self.w2v.get(obj_name, self.w2v['</s>'])
           feats = emb_feats
         else:
-          feats = np.sum(item['features'], axis=0)
+          feats = item['features']
+        feats = np.sum(feats, axis=0)
         self.features[idx][fovid, :] = feats
     if self.nextstep:
       self._add_nextstep()
