@@ -1077,8 +1077,7 @@ def dump_fov_stats(
 
 def generate_baseline_cooccurrences(
         obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json',
-        cooccurrence_path='./cooccurrences',
-        version='v3'):
+        cooccurrence_path='./cooccurrences'):
 
   _, _, _, _, _, vg2name = get_object_dictionaries(
       obj_dict_file, return_all=True)
@@ -1086,25 +1085,25 @@ def generate_baseline_cooccurrences(
   rand100_cooccurrence = np.random.randint(100, size=(n_objects, n_objects))
 
   d = {'method': 'ranindt max 100',
-       'prefix': 'random100_{}'.format(version),
+       'prefix': 'random100',
        'cooccurrence': rand100_cooccurrence}
   np.save(os.path.join(cooccurrence_path,
-                       'cooccurrence.random100_.npy'.format(version)), d)
+                       'cooccurrence.random100.npy'), d)
 
   uniform_cooccurrence = np.ones((n_objects, n_objects))
   d = {'method': 'uniform',
-       'prefix': 'uniform_{}'.format(version),
+       'prefix': 'uniform',
        'cooccurrence': uniform_cooccurrence}
   np.save(os.path.join(cooccurrence_path,
-                       'cooccurrence.uniform_{}.npy'.format(version)), d)
+                       'cooccurrence.uniform.npy'), d)
 
   diagonal_cooccurrence = np.zeros((n_objects, n_objects))
   np.fill_diagonal(diagonal_cooccurrence, 1)
   d = {'method': 'diagonal 1',
-       'prefix': 'diagonal_{}'.format(version),
+       'prefix': 'diagonal',
        'cooccurrence': diagonal_cooccurrence}
   np.save(os.path.join(cooccurrence_path,
-                       'cooccurrence.diagonal_{}.npy'.format(version)), d)
+                       'cooccurrence.diagonal.npy'), d)
 
   print('DONE! bye.')
 
@@ -1122,6 +1121,7 @@ if __name__ == '__main__':
       angle_inc)
   cache_root = '{}_data/cached_data_{}degrees'.format(data_prefix, angle_inc)
   image_list_file = './{}_data/imagelist.txt'.format(data_prefix)
+
   print('angle_inc', angle_inc)
   print('n_fovs', n_fovs)
   print('butd_filename', butd_filename)
@@ -1138,7 +1138,7 @@ if __name__ == '__main__':
   print('iou:', iou)
   print('diag_mode:', diag_mode)
   # test_get_nears()
-  # generate_baseline_cooccurrences(version=version)
+  # generate_baseline_cooccurrences()
   # get_visualgenome_stats(version=version)
   # get_spatialsense_stats(version=version)
   # get_wordnet_stats(version=version)
