@@ -482,7 +482,7 @@ class MeanPooledImageFeatures(ImageFeatures):
     for long_id in self.features:
       scan = long_id.split('_')[0]
       pano = long_id.split('_')[1]
-      nextstep_features[long_id] = self.features[long_id]
+      nextstep_features[long_id] = np.zeros_like(self.features[long_id])
       if pano not in graph[scan]:
         missed_pano += 1
         continue
@@ -602,7 +602,8 @@ class ReverieFeatures(ImageFeatures):
     for long_id in self.features:
       scan = long_id.split('_')[0]
       pano = long_id.split('_')[1]
-      nextstep_features[long_id] = self.features[long_id]
+
+      nextstep_features[long_id] = np.zeros_like(self.features[long_id])
       if pano not in graph[scan]:
         missed_pano += 1
         continue
@@ -728,7 +729,8 @@ class BottomUpTopDownFeatures(ImageFeatures):
     for long_id in self.features:
       scan = long_id.split('_')[0]
       pano = long_id.split('_')[1]
-      nextstep_features[long_id] = self.features[long_id]
+
+      nextstep_features[long_id] = np.zeros_like(self.features[long_id])
       if pano not in graph[scan]:
         missed_pano += 1
         continue
