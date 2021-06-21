@@ -23,6 +23,7 @@ from refer360_utils import MODEL2PREFIX
 from refer360_utils import MODEL2FEATURE_DIM
 from refer360_utils import get_object_dictionaries
 import base64
+from pprint import pprint
 file_path = os.path.dirname(__file__)
 module_path = os.path.abspath(os.path.join(file_path))
 sys.path.append(module_path)
@@ -467,28 +468,26 @@ class MeanPooledImageFeatures(ImageFeatures):
 
   def _add_nextstep(self):
     print('nextstep features will be created')
-    connect_folder = os.path.abspath(
-        os.path.join(file_path, '..', '..', 'connectivity'))
-
-    scans = []
-    for name in os.listdir(connect_folder):
-      if name.split('.')[1] == 'json':
-        scan = name.split('_')[0]
-        scans.append(scan)
-    graph = load_nav_graphs(scans)
     nextstep_features = {}
 
     missed_pano = 0
+    print('Loading the sim for nextstep features')
+    sim = make_sim(ImageFeatures.IMAGE_W,
+                   ImageFeatures.IMAGE_H,
+                   ImageFeatures.VFOV)
     for long_id in self.features:
       scan = long_id.split('_')[0]
       pano = long_id.split('_')[1]
-      nextstep_features[long_id] = np.zeros_like(self.features[long_id])
-      if pano not in graph[scan]:
-        missed_pano += 1
-        continue
-      for neighbor in graph[scan][pano]:
-        neighbor_feature = self.features['{}_{}'.format(scan, neighbor)]
-        nextstep_features[long_id] += neighbor_feature
+      world_state = WorldState(scan, pano, 0, 0)
+      sim.newEpisode(*world_state)
+      _, neighbors = _get_panorama_states(sim)
+      nextstep_features[long_id] = self.features[long_id]
+      for neighbor in neighbors:
+        absViewIndex = neighbor['absViewIndex']
+        nextpano = neighbor['nextViewpointId']
+        neighbor_feature = np.sum(self.features['{}_{}'.format(scan, nextpano)],axis=0).reshape(1,self.feature_dim)
+        nextstep_features[long_id][absViewIndex,:] = neighbor_feature
+
     print('missed {} panos'.format(missed_pano))
     self.features = nextstep_features
 
@@ -587,29 +586,26 @@ class ReverieFeatures(ImageFeatures):
 
   def _add_nextstep(self):
     print('nextstep features will be created')
-    connect_folder = os.path.abspath(
-        os.path.join(file_path, '..', '..', 'connectivity'))
-
-    scans = []
-    for name in os.listdir(connect_folder):
-      if name.split('.')[1] == 'json':
-        scan = name.split('_')[0]
-        scans.append(scan)
-    graph = load_nav_graphs(scans)
     nextstep_features = {}
 
     missed_pano = 0
+    print('Loading the sim for nextstep features')
+    sim = make_sim(ImageFeatures.IMAGE_W,
+                   ImageFeatures.IMAGE_H,
+                   ImageFeatures.VFOV)
     for long_id in self.features:
       scan = long_id.split('_')[0]
       pano = long_id.split('_')[1]
+      world_state = WorldState(scan, pano, 0, 0)
+      sim.newEpisode(*world_state)
+      _, neighbors = _get_panorama_states(sim)
+      nextstep_features[long_id] = self.features[long_id]
+      for neighbor in neighbors:
+        absViewIndex = neighbor['absViewIndex']
+        nextpano = neighbor['nextViewpointId']
+        neighbor_feature = np.sum(self.features['{}_{}'.format(scan, nextpano)],axis=0).reshape(1,self.feature_dim)
+        nextstep_features[long_id][absViewIndex,:] = neighbor_feature
 
-      nextstep_features[long_id] = np.zeros_like(self.features[long_id])
-      if pano not in graph[scan]:
-        missed_pano += 1
-        continue
-      for neighbor in graph[scan][pano]:
-        neighbor_feature = self.features['{}_{}'.format(scan, neighbor)]
-        nextstep_features[long_id] += neighbor_feature
     print('missed {} panos'.format(missed_pano))
     self.features = nextstep_features
 
@@ -714,29 +710,26 @@ class BottomUpTopDownFeatures(ImageFeatures):
 
   def _add_nextstep(self):
     print('nextstep features will be created')
-    connect_folder = os.path.abspath(
-        os.path.join(file_path, '..', '..', 'connectivity'))
-
-    scans = []
-    for name in os.listdir(connect_folder):
-      if name.split('.')[1] == 'json':
-        scan = name.split('_')[0]
-        scans.append(scan)
-    graph = load_nav_graphs(scans)
     nextstep_features = {}
 
     missed_pano = 0
+    print('Loading the sim for nextstep features')
+    sim = make_sim(ImageFeatures.IMAGE_W,
+                   ImageFeatures.IMAGE_H,
+                   ImageFeatures.VFOV)
     for long_id in self.features:
       scan = long_id.split('_')[0]
       pano = long_id.split('_')[1]
+      world_state = WorldState(scan, pano, 0, 0)
+      sim.newEpisode(*world_state)
+      _, neighbors = _get_panorama_states(sim)
+      nextstep_features[long_id] = self.features[long_id]
+      for neighbor in neighbors:
+        absViewIndex = neighbor['absViewIndex']
+        nextpano = neighbor['nextViewpointId']
+        neighbor_feature = np.sum(self.features['{}_{}'.format(scan, nextpano)],axis=0).reshape(1,self.feature_dim)
+        nextstep_features[long_id][absViewIndex,:] = neighbor_feature
 
-      nextstep_features[long_id] = np.zeros_like(self.features[long_id])
-      if pano not in graph[scan]:
-        missed_pano += 1
-        continue
-      for neighbor in graph[scan][pano]:
-        neighbor_feature = self.features['{}_{}'.format(scan, neighbor)]
-        nextstep_features[long_id] += neighbor_feature
     print('missed {} panos'.format(missed_pano))
     self.features = nextstep_features
 
