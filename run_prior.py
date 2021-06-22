@@ -1,6 +1,7 @@
 import argparse
 import math
 import os
+from pprint import pprint
 from refer360_utils import test_get_nears
 from refer360_utils import generate_baseline_cooccurrences
 from refer360_utils import get_visualgenome_stats
@@ -52,7 +53,8 @@ parser.add_argument('--prefix_iou', type=int,  default=10,
                     help='prefix_iou, default=10')
 parser.add_argument("--cooccurrence_method",
                     choices=['all', 'lm', 'language',
-                             'vision', 'word_emb', 'dataset'],
+                             'vision', 'word_emb', 'dataset',
+                             'baseline'],
                     default='all',
                     help='prior method: default=all')
 
@@ -115,6 +117,14 @@ def get_cooccurrence_files(method, cooccurrence_path, data_stats, version):
     data_stats_method = os.path.join(
         cooccurrence_path, 'cooccurrence.{}_{}.npy'.format(data_stats, version))
     cooccurrence_files += [data_stats_method]
+  if method == 'baseline':
+    baselines = ['uniform',
+                 'random100',
+                 'diagonal'
+                 ]
+    for baseline in baselines:
+      cooccurrence_files += [os.path.join(
+          cooccurrence_path, 'cooccurrence.{}.npy'.format(baseline))]
   return cooccurrence_files
 
 
@@ -185,7 +195,8 @@ if args.dataset_stats:
 data_stats = '{}_d{}_butd'.format(data_prefix, angle_inc)
 cooccurrence_files = get_cooccurrence_files(
     args.cooccurrence_method, cooccurrence_path, data_stats, version)
-
+print('cooccurrence_files:')
+pprint(cooccurrence_files)
 if args.evaluate_fov_caches:
   print('running evaluate_fov_caches()')
   evaluate_fov_caches(
