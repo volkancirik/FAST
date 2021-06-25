@@ -1,15 +1,16 @@
 ''' Utils for Refer360 grounding environment '''
-import math
-from collections import defaultdict
-import numpy as np
 import base64
+from collections import defaultdict
+import csv
 import io
 import json
-from tqdm import tqdm
-import os
-import sys
-import csv
 from nltk.corpus import wordnet
+import numpy as np
+import os
+from pprint import pprint
+import sys
+from tqdm import tqdm
+
 from box_utils import get_boxes2coor_relationships
 from box_utils import get_box2box_relationships
 from box_utils import calculate_iou, calculate_area
@@ -277,6 +278,8 @@ def test_get_nears():
       obj_dict_file, return_all=True)
   print('# of objects:', len(vg2name), len(obj_classes))
   nears, inside, centers, iou, edge = get_nears(boxes)
+  print('nears\n', nears)
+  print('_'*20)
   print('inside\n', inside)
   print('_'*20)
   print('centers\n', centers)
@@ -300,8 +303,8 @@ def test_get_nears():
   print(cooccurrence[idx1, :])
   d = {'method': 'test',
        'cooccurrence': cooccurrence}
-  np.save('cooccurrence.test.npy', d)
-  d = np.load('cooccurrence.test.npy', allow_pickle=True)[()]
+  np.save('./cooccurrences/cooccurrence.test.npy', d)
+  d = np.load('./cooccurrences/cooccurrence.test.npy', allow_pickle=True)[()]
   cooccurrence = d['cooccurrence']
   method = d['method']
   print(method)
@@ -328,11 +331,15 @@ def get_dataset_stats(
 
   n_objects = len(vg2name)
   cooccurrence = np.zeros((n_objects, n_objects))
+  distance_mean = np.zeros((n_objects, n_objects))
+  distance_sigma = np.zeros((n_objects, n_objects))
+  distance_list = {obj: defaultdict(list) for obj in obj_classes}
   print('loaded BUTD boxes!', image_list_file)
   print('{}x{} cooccurrence matrix will be created...'.format(n_objects, n_objects))
   image_list = [line.strip()
                 for line in open(image_list_file)]
   pbar = tqdm(image_list)
+
   for fname in pbar:
     pano = fname.split('/')[-1].split('.')[0]
     for idx in range(n_fovs):
@@ -348,10 +355,33 @@ def get_dataset_stats(
         idx1, idx2 = obj_classes.index(name1), obj_classes.index(name2)
         cooccurrence[idx1, idx2] += 1
         cooccurrence[idx2, idx1] += 1
+
+      for kk in range(len(centers)):
+        for jj in range(kk+1, len(centers)):
+          o1, o2 = object_ids[kk], object_ids[jj]
+          name1, name2 = vg2name.get(o1, '</s>'), vg2name.get(o2, '</s>')
+          idx1, idx2 = obj_classes.index(name1), obj_classes.index(name2)
+          distance = centers[kk][jj]
+          distance_list[name1][name2].append(distance)
+          distance_list[name2][name1].append(distance)
+
+  for kk, src in enumerate(obj_classes):
+    for jj, trg in enumerate(obj_classes):
+      idx1, idx2 = obj_classes.index(src), obj_classes.index(trg)
+      mean, sigma = 0, 0
+      if len(distance_list[src][trg]) > 1:
+        mean = np.mean(distance_list[src][trg])
+        sigma = np.std(distance_list[src][trg])
+      distance_mean[idx1][idx2] = mean
+      distance_sigma[idx1][idx2] = sigma
+
   d = {'method': '{}_{}degrees_butd_36obj'.format(data_prefix, angle_inc),
        'prefix': 'r{}butd_{}'.format(angle_inc, version),
        'butd_filename': butd_filename,
-       'cooccurrence': cooccurrence}
+       'cooccurrence': cooccurrence,
+       'distance_mean': distance_mean,
+       'distance_sigma': distance_sigma}
+
   out_file = os.path.join(cooccurrence_path,
                           'cooccurrence.{}_d{}_butd_{}.npy'.format(data_prefix,
                                                                    angle_inc,
