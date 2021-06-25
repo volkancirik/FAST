@@ -22,13 +22,13 @@ parser.add_argument("--data_prefix",
 parser.add_argument('--angle_inc', type=int,
                     choices=[30, 45, 60],
                     default=30,
-                    help='degrees between fovs, default=15')
+                    help='degrees between fovs, default=30')
 parser.add_argument('--output_root', type=str,
                     default='./img_features',
                     help='Dump folder path like default=./img_features')
 parser.add_argument('--diag_mode', type=int,
                     choices=[-1, 0, 1],
-                    default=0,
+                    default=-1,
                     help='diagonal of cooccurrence data, default=-1')
 parser.add_argument('--img_features_root', type=str,
                     default='./img_features',
@@ -117,7 +117,7 @@ def get_cooccurrence_files(method, cooccurrence_path, data_stats, version):
     data_stats_method = os.path.join(
         cooccurrence_path, 'cooccurrence.{}_{}.npy'.format(data_stats, version))
     cooccurrence_files += [data_stats_method]
-  if method == 'baseline':
+  if method == 'all' or method == 'baseline':
     baselines = ['uniform',
                  'random100',
                  'diagonal'
