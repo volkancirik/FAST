@@ -516,6 +516,219 @@ def get_wordnet_stats(
   print('DONE! bye.')
 
 
+def get_points(radius, number_of_points):
+  radians_between_each_point = 2*np.pi/number_of_points
+  list_of_points = []
+  for p in range(0, number_of_points):
+    list_of_points.append((radius*np.cos(p*radians_between_each_point),
+                           radius*np.sin(p*radians_between_each_point)))
+  return list_of_points
+
+
+def gaussian_map(gt_x, gt_y,
+                 sigma=3.0,
+                 width=400,
+                 height=400,
+                 sigma_x=None,
+                 sigma_y=None):
+  if sigma_x == None:
+    sigma_x = sigma
+  if sigma_y == None:
+    sigma_y = sigma
+
+  assert isinstance(width, int)
+  assert isinstance(height, int)
+
+  x0 = width // 2
+  y0 = height // 2
+
+  x = np.arange(0, width, dtype=float)
+  y = np.arange(0, height, dtype=float)[:, np.newaxis]
+
+  x -= x0
+  y -= y0
+
+  exp_part = x**2/(2*sigma_x**2) + y**2/(2*sigma_y**2)
+  gaussian = 1/(2*np.pi*sigma_x*sigma_y) * np.exp(-exp_part)
+  full = np.zeros((width*3, height*3))
+  full[height:height*2, width:width*2] = gaussian
+
+  start_y = height + int((height/2 - gt_y))
+  start_x = width + int((width/2 - gt_x))
+  crop = full[start_y:start_y+height, start_x:start_x+width]
+  return crop
+
+
+def get_ring(width=400,
+             height=400,
+             num_points=20,
+             mean=100,
+             sigma=10,
+             center_x=-1,
+             center_y=-1):
+  if center_x < 0:
+    center_x = width/2
+  if center_y < 0:
+    center_y = height/2
+  canvas = np.zeros((height, width))
+  for p in get_points(mean, num_points):
+    target = gaussian_map(center_x+p[0], center_y+p[1],
+                          width=width, height=height,
+                          sigma=sigma)
+    canvas += target
+  return canvas
+
+
+def get_canvas(object_tuples, distance_mean, distance_sigma,
+               canvas_ratio=20,
+               num_points=16,
+               fov_size=400):
+  diff = int(fov_size/canvas_ratio)
+  canvas_size = diff*3
+  canvas = np.zeros((canvas_size, canvas_size, distance_mean.shape[1]))
+  # canvas = np.zeros((canvas_size,canvas_size))
+
+  for ii, (idx, o) in enumerate(object_tuples):
+    x, y, w, h = int(o[0]/canvas_ratio)+diff, int(o[1]/canvas_ratio) + \
+        diff, int(
+        (o[2]-o[0])/canvas_ratio), int((o[3]-o[1])/canvas_ratio)
+    center_x = x + w/2
+    center_y = y + h/2
+    for jj in range(distance_mean.shape[1]):
+      d_mean = distance_mean[idx][jj] / canvas_ratio
+      d_sigma = distance_sigma[idx][jj] / canvas_ratio
+      if d_mean == 0 or d_sigma == 0:
+        continue
+      ring = get_ring(width=canvas_size,
+                      height=canvas_size,
+                      num_points=num_points,
+                      mean=d_mean,
+                      sigma=d_sigma,
+                      center_x=center_x,
+                      center_y=center_y)
+      # canvas += ring
+      canvas[:, :, jj] += ring
+  return canvas
+
+
+DIR2RANGES = {
+    'ul': (0, 0, 1, 1),
+    'u': (1, 0, 2, 1),
+    'ur': (2, 0, 3, 1),
+    'l': (0, 1, 1, 2),
+    'r': (2, 1, 3, 2),
+    'dl': (0, 2, 1, 3),
+    'd': (1, 2, 2, 3),
+    'dr': (2, 2, 3, 3),
+}
+
+
+def get_direction_weights(canvas):
+  coeff = canvas.shape[0]/3
+
+  weights = {direction: np.array([0.0]*canvas.shape[2])
+             for direction in DIR2RANGES}
+  for direction in DIR2RANGES:
+    min_x = int(DIR2RANGES[direction][0]*coeff)
+    min_y = int(DIR2RANGES[direction][1]*coeff)
+    max_x = int(DIR2RANGES[direction][2]*coeff)
+    max_y = int(DIR2RANGES[direction][3]*coeff)
+    for obj in range(canvas.shape[2]):
+      weights[direction][obj] = np.sum(canvas[min_y:max_y, min_x:max_x, obj])
+    sum_count = np.sum(weights[direction])
+    if sum_count > 0:
+      weights[direction] = weights[direction] / sum_count
+  return weights
+
+
+def dump_gaussian_caches(
+        butd_filename='./img_features/refer360_30degrees_obj36.tsv',
+        image_list_file='./refer360_data/imagelist.txt',
+        n_fovs=60,
+        angle_inc=30,
+        data_prefix='refer360',
+        word_embedding_path='./tasks/FAST/data/cc.en.300.vec',
+        obj_dict_file='./tasks/FAST/data/vg_object_dictionaries.all.json',
+    output_root='./img_features',
+        cooccurrence_files=[],
+        msuffix=''):
+  vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name = get_object_dictionaries(
+      obj_dict_file, return_all=True)
+
+  print('loading w2v...', word_embedding_path)
+  w2v = load_vectors(word_embedding_path, name2vg)
+
+  print('loading BUTD boxes...', butd_filename)
+  fov2keys = load_butd(butd_filename,
+                       vg2name=vg2name,
+                       keys=['boxes', 'objects_id'])
+  print('loaded BUTD boxes!', image_list_file)
+  FIELDNAMES = ['pano_fov', 'features']
+
+  for cooccurrence_file in cooccurrence_files:
+
+    cooccurrence_data = np.load(cooccurrence_file,
+                                allow_pickle=True)[()]
+    distance_mean = cooccurrence_data['distance_mean']
+    distance_sigma = cooccurrence_data['distance_sigma']
+    prefix = cooccurrence_data['prefix']
+
+    suffix = msuffix
+    outfile = os.path.join(output_root, '{}_{}degrees_{}{}.tsv'.format(
+        data_prefix, angle_inc, prefix, suffix))
+    print('output file:', outfile)
+
+    image_list = [line.strip()
+                  for line in open(image_list_file)]
+    pbar = tqdm(image_list)
+
+    with open(outfile, 'w') as tsvfile:
+      writer = csv.DictWriter(tsvfile, delimiter='\t', fieldnames=FIELDNAMES)
+      for fname in pbar:
+        pano = fname.split('/')[-1].split('.')[0]
+        for idx in range(n_fovs):
+          pano_fov = '{}_{}'.format(pano, idx)
+          features = np.zeros((9, 300), dtype=np.float32)
+
+          if pano_fov in fov2keys['boxes'] and pano_fov in fov2keys['objects_id']:
+            boxes = fov2keys['boxes'][pano_fov]
+            object_ids = fov2keys['objects_id'][pano_fov]
+            n_boxes = len(boxes)
+
+            emb_feats = np.zeros((n_boxes, 300), dtype=np.float32)
+            object_tuples = []
+            for ii, obj_id in enumerate(object_ids):
+              obj_name = vg2name.get(obj_id, '</s>')
+              emb_feats[ii, :] = w2v.get(obj_name, w2v['</s>'])
+              idx = obj_classes.index(obj_name)
+              object_tuples.append((idx, boxes[ii]))
+
+            canvas = get_canvas(object_tuples, distance_mean, distance_sigma)
+            weights = get_direction_weights(canvas)
+            features[4, :] = np.sum(emb_feats, axis=0)
+
+            # for each direction in ul, u, ur, l, r, dl, d, dr
+            for direction in DIR2IDX:
+              dir_feats = np.zeros((1, 300), dtype=np.float32)
+              feat_index = DIR2IDX[direction]
+
+              # for each object on the edge
+              for obj in obj_classes:
+                idx = obj_classes.index(obj)
+                if weights[direction][idx] > 0:
+                  emb = w2v.get(obj, w2v['</s>'])
+                  dir_feats += emb * weights[direction][idx]
+              features[feat_index, :] = dir_feats
+          encoded = base64.b64encode(features).decode()
+          d = {'pano_fov': pano_fov,
+               'features': encoded}
+
+          writer.writerow(d)
+    pbar.close()
+    print('DONE!')
+  print('DONE with all!')
+
+
 def dump_fov_caches(
         butd_filename='./img_features/refer360_30degrees_obj36.tsv',
         image_list_file='./refer360_data/imagelist.txt',

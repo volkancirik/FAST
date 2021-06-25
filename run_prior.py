@@ -12,6 +12,7 @@ from refer360_utils import evaluate_fov_caches
 from refer360_utils import dump_fov_caches
 from refer360_utils import dump_oracle_caches
 from refer360_utils import dump_fov_stats
+from refer360_utils import dump_gaussian_caches
 
 
 parser = argparse.ArgumentParser()
@@ -68,6 +69,7 @@ parser.add_argument('--evaluate_fov_caches', action='store_true')
 parser.add_argument('--dump_fov_caches', action='store_true')
 parser.add_argument('--dump_oracle_caches', action='store_true')
 parser.add_argument('--dump_fov_stats', action='store_true')
+parser.add_argument('--dump_gaussian_caches', action='store_true')
 
 CAT2METHOD = {
     'all': ['wn',
@@ -261,3 +263,17 @@ if args.dump_fov_stats:
                  stats_files=stats_files,
                  outfiles=outfiles,
                  methods=methods)
+if args.dump_gaussian_caches:
+  data_stats_method = os.path.join(
+      cooccurrence_path, 'cooccurrence.{}_{}.npy'.format(data_stats, version))
+  cooccurrence_files = [data_stats_method]
+  msuffix = 'GAUSSIAN'
+  dump_gaussian_caches(butd_filename=butd_filename,
+                       image_list_file=image_list_file,
+                       n_fovs=n_fovs,
+                       angle_inc=angle_inc,
+                       word_embedding_path=word_embedding_path,
+                       obj_dict_file=obj_dict_file,
+                       output_root=output_root,
+                       cooccurrence_files=cooccurrence_files,
+                       msuffix=msuffix)
