@@ -55,7 +55,7 @@ parser.add_argument('--prefix_iou', type=int,  default=10,
 parser.add_argument("--cooccurrence_method",
                     choices=['all', 'lm', 'language',
                              'vision', 'word_emb', 'dataset',
-                             'baseline'],
+                             'baseline', 'custom'],
                     default='all',
                     help='prior method: default=all')
 
@@ -111,6 +111,15 @@ CAT2METHOD = {
 def get_cooccurrence_files(method, cooccurrence_path, data_stats, version):
   cooccurrence_files = []
 
+  if method == 'custom':
+    custom = ['ss_v5',
+              'vg_v5',
+              'wn_v5'
+              ]
+    for c in custom:
+      cooccurrence_files += [os.path.join(
+          cooccurrence_path, 'cooccurrence.{}.npy'.format(c))]
+    return cooccurrence_files
   if method in CAT2METHOD:
     for m in CAT2METHOD[method]:
       cooccurrence_files += [os.path.join(
@@ -272,6 +281,7 @@ if args.dump_gaussian_caches:
                        image_list_file=image_list_file,
                        n_fovs=n_fovs,
                        angle_inc=angle_inc,
+                       data_prefix=data_prefix,
                        word_embedding_path=word_embedding_path,
                        obj_dict_file=obj_dict_file,
                        output_root=output_root,
