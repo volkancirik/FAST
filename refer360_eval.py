@@ -121,8 +121,7 @@ class Refer360Evaluation(object):
         -np.min([self.distances[u][v] for v in prediction]) / self.error_margin
     ) for u in reference])
     expected = coverage * self.length(reference)
-    score = expected \
-        / (expected + np.abs(expected - self.length(prediction)))
+    score = expected / (expected + np.abs(expected - self.length(prediction)))
     return coverage * score
 
   def _score_item(self, instr_id, path):
@@ -140,8 +139,7 @@ class Refer360Evaluation(object):
 
     start = gt['path'][0]
 
-    assert start == path[0][0], \
-        'Result trajectories should include the start position'
+    assert start == path[0][0], 'Result trajectories should include the start position'
     goal = gt['path'][-1]
     final_position = path[-1][0]
 
@@ -202,7 +200,8 @@ class Refer360Evaluation(object):
                       acc_120=metrics['acc_120'],
                       distance=distance,
                       cls=cls,
-                      ndtw=ndtw)
+                      ndtw=ndtw,
+                      )
 
   def score_results(self, results):
     # results should be a dictionary mapping instr_ids to dictionaries,
@@ -310,6 +309,17 @@ class Refer360Evaluation(object):
             sum(self.scores['distance']) / len(self.scores['distance'])),
         'cls': float(sum(self.scores['cls'])) / len(self.scores['cls']),
         'ndtw': float(sum(self.scores['ndtw'])) / len(self.scores['ndtw']),
+        'acc_40_std': np.std(self.scores['acc_40']),
+        'acc_80_std': np.std(self.scores['acc_80']),
+        'acc_120_std': np.std(self.scores['acc_120']),
+        'distance_std': np.std(self.scores['distance']),
+        'fov_accuracy_std': np.std(self.scores['fov_accuracy']),
+        'success_std': np.std(self.scores['success']),
+        'steps_std': np.std(self.scores['steps']),
+        'spl_std': np.std(self.scores['spl']),
+        'ndtw_std': np.std(self.scores['ndtw']),
+        'cls_std': np.std(self.scores['cls']),
+        'oracle_rate_std': np.std(self.scores['oracle_rate']),
     }
     if len(model_scores) > 0:
       assert len(model_scores) == instr_count
@@ -551,9 +561,16 @@ def eval_outfiles(args):
     print('\n', outfile)
     pp.pprint(score_summary)
     print('CSV below:')
-    print(','.join(['{}'.format(metric) for metric in METRICS]))
-    print(','.join(['{:4.3f}'.format(score_summary[metric])
-                    for metric in METRICS]))
+    if args.with_std:
+      print(','.join(['{} {}'.format(metric, metric+'(std)')
+                      for metric in METRICS]))
+      print(','.join(['{:4.3f} ({:4.4f})'.format(score_summary[metric], score_summary[metric+'_std'])
+                      for metric in METRICS]))
+    else:
+      print(','.join(['{}'.format(metric)
+                      for metric in METRICS]))
+      print(','.join(['{:4.3f}'.format(score_summary[metric])
+                      for metric in METRICS]))
 
 
 if __name__ == '__main__':
@@ -562,6 +579,7 @@ if __name__ == '__main__':
   # TODO: take function to run as argument
   parser.add_argument('--results_path', type=str,
                       default='')
+  parser.add_argument('--with_std', action='store_true')
 
   utils.run(parser, eval_outfiles)
-  #utils.run(parser, eval_simple_agents)
+  # utils.run(parser, eval_simple_agents)
