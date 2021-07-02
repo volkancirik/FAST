@@ -405,6 +405,10 @@ def get_spatialsense_stats(
 
   print('{}x{} cooccurrence matrix will be created...'.format(n_objects, n_objects))
   cooccurrence = np.zeros((n_objects, n_objects))
+  distance_mean = np.zeros((n_objects, n_objects))
+  distance_sigma = np.zeros((n_objects, n_objects))
+  distance_list = {obj: defaultdict(list) for obj in obj_classes}
+
   pbar = tqdm(anns)
   for imgs in pbar:
 
@@ -431,9 +435,30 @@ def get_spatialsense_stats(
         cooccurrence[idx1, idx2] += 1
         cooccurrence[idx2, idx1] += 1
 
+      for kk in range(len(centers)):
+        for jj in range(kk+1, len(centers)):
+          o1, o2 = object_ids[kk], object_ids[jj]
+          name1, name2 = vg2name.get(o1, '</s>'), vg2name.get(o2, '</s>')
+          idx1, idx2 = obj_classes.index(name1), obj_classes.index(name2)
+          distance = centers[kk][jj]
+          distance_list[name1][name2].append(distance)
+          distance_list[name2][name1].append(distance)
+
+  for kk, src in enumerate(obj_classes):
+    for jj, trg in enumerate(obj_classes):
+      idx1, idx2 = obj_classes.index(src), obj_classes.index(trg)
+      mean, sigma = 0, 0
+      if len(distance_list[src][trg]) > 1:
+        mean = np.mean(distance_list[src][trg])
+        sigma = np.std(distance_list[src][trg])
+      distance_mean[idx1][idx2] = mean
+      distance_sigma[idx1][idx2] = sigma
+
   d = {'method': 'spatialsense',
        'prefix': 'ss_{}'.format(version),
-       'cooccurrence': cooccurrence}
+       'cooccurrence': cooccurrence,
+       'distance_mean': distance_mean,
+       'distance_sigma': distance_sigma}
   np.save(os.path.join(cooccurrence_path,
                        'cooccurrence.ss_{}.npy'.format(version)), d)
   print('DONE! bye.')
@@ -453,6 +478,10 @@ def get_visualgenome_stats(
 
   print('{}x{} cooccurrence matrix will be created...'.format(n_objects, n_objects))
   cooccurrence = np.zeros((n_objects, n_objects))
+  distance_mean = np.zeros((n_objects, n_objects))
+  distance_sigma = np.zeros((n_objects, n_objects))
+  distance_list = {obj: defaultdict(list) for obj in obj_classes}
+
   pbar = tqdm(objects)
   for imgs in pbar:
     object_ids, boxes = [], []
@@ -470,10 +499,30 @@ def get_visualgenome_stats(
       idx1, idx2 = object_ids[near[0]], object_ids[near[1]]
       cooccurrence[idx1, idx2] += 1
       cooccurrence[idx2, idx1] += 1
+    for kk in range(len(centers)):
+      for jj in range(kk+1, len(centers)):
+        o1, o2 = object_ids[kk], object_ids[jj]
+        name1, name2 = vg2name.get(o1, '</s>'), vg2name.get(o2, '</s>')
+        idx1, idx2 = obj_classes.index(name1), obj_classes.index(name2)
+        distance = centers[kk][jj]
+        distance_list[name1][name2].append(distance)
+        distance_list[name2][name1].append(distance)
+
+  for kk, src in enumerate(obj_classes):
+    for jj, trg in enumerate(obj_classes):
+      idx1, idx2 = obj_classes.index(src), obj_classes.index(trg)
+      mean, sigma = 0, 0
+      if len(distance_list[src][trg]) > 1:
+        mean = np.mean(distance_list[src][trg])
+        sigma = np.std(distance_list[src][trg])
+      distance_mean[idx1][idx2] = mean
+      distance_sigma[idx1][idx2] = sigma
 
   d = {'method': 'visualgenome v1.4',
        'prefix': 'vg_{}'.format(version),
-       'cooccurrence': cooccurrence}
+       'cooccurrence': cooccurrence,
+       'distance_mean': distance_mean,
+       'distance_sigma': distance_sigma}
   np.save(os.path.join(cooccurrence_path,
                        'cooccurrence.vg_{}.npy'.format(version)), d)
   print('DONE! bye.')
@@ -525,16 +574,23 @@ def get_points(radius, number_of_points):
   return list_of_points
 
 
-def gaussian_map(gt_x, gt_y,
-                 sigma=3.0,
-                 width=400,
-                 height=400,
-                 sigma_x=None,
-                 sigma_y=None):
+def gauss_map_fast(gt_x, gt_y,
+                   mean=50,
+                   sigma=3.0,
+                   width=400,
+                   height=400,
+                   mean_x=None,
+                   mean_y=None,
+                   sigma_x=None,
+                   sigma_y=None):
   if sigma_x == None:
     sigma_x = sigma
   if sigma_y == None:
     sigma_y = sigma
+  if mean_x == None:
+    mean_x = mean
+  if mean_y == None:
+    mean_y = mean
 
   assert isinstance(width, int)
   assert isinstance(height, int)
@@ -547,8 +603,9 @@ def gaussian_map(gt_x, gt_y,
 
   x -= x0
   y -= y0
+  d = np.sqrt(x*x+y*y)
 
-  exp_part = x**2/(2*sigma_x**2) + y**2/(2*sigma_y**2)
+  exp_part = (d-mean_x)**2/(2*sigma_x**2) + (d-mean_y)**2/(2*sigma_y**2)
   gaussian = 1/(2*np.pi*sigma_x*sigma_y) * np.exp(-exp_part)
   full = np.zeros((width*3, height*3))
   full[height:height*2, width:width*2] = gaussian
@@ -559,29 +616,20 @@ def gaussian_map(gt_x, gt_y,
   return crop
 
 
-def get_ring(width=400,
-             height=400,
-             num_points=20,
-             mean=100,
-             sigma=10,
-             center_x=-1,
-             center_y=-1):
+def get_ring_fast(width=400, height=400, mean=100, sigma=10, center_x=-1, center_y=-1):
   if center_x < 0:
     center_x = width/2
   if center_y < 0:
     center_y = height/2
-  canvas = np.zeros((height, width))
-  for p in get_points(mean, num_points):
-    target = gaussian_map(center_x+p[0], center_y+p[1],
+  canvas = gauss_map_fast(center_x, center_y,
                           width=width, height=height,
-                          sigma=sigma)
-    canvas += target
+                          sigma=sigma,
+                          mean=mean)
   return canvas
 
 
 def get_canvas(object_tuples, distance_mean, distance_sigma,
                canvas_ratio=20,
-               num_points=16,
                fov_size=400):
   diff = int(fov_size/canvas_ratio)
   canvas_size = diff*3
@@ -599,13 +647,12 @@ def get_canvas(object_tuples, distance_mean, distance_sigma,
       d_sigma = distance_sigma[idx][jj] / canvas_ratio
       if d_mean == 0 or d_sigma == 0:
         continue
-      ring = get_ring(width=canvas_size,
-                      height=canvas_size,
-                      num_points=num_points,
-                      mean=d_mean,
-                      sigma=d_sigma,
-                      center_x=center_x,
-                      center_y=center_y)
+      ring = get_ring_fast(width=canvas_size,
+                           height=canvas_size,
+                           mean=d_mean,
+                           sigma=d_sigma,
+                           center_x=center_x,
+                           center_y=center_y)
       # canvas += ring
       canvas[:, :, jj] += ring
   return canvas

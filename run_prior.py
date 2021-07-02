@@ -112,10 +112,10 @@ def get_cooccurrence_files(method, cooccurrence_path, data_stats, version):
   cooccurrence_files = []
 
   if method == 'custom':
-    custom = ['ss_v5',
-              'vg_v5',
-              'wn_v5'
-              ]
+    custom = [
+        'wn_v5',
+        'vg_v5',
+        'ss_v5']
     for c in custom:
       cooccurrence_files += [os.path.join(
           cooccurrence_path, 'cooccurrence.{}.npy'.format(c))]
