@@ -20,8 +20,8 @@ from collections import namedtuple
 
 
 EvalResult = namedtuple(
-    'EvalResult', 'nav_error, oracle_error, trajectory_steps, '
-    'trajectory_length, success, oracle_success, spl, '
+    'EvalResult', 'nav_error, oracle_error, steps, '
+    'length, success, oracle_success, spl, '
     'fov_accuracy, acc_40, acc_80, acc_120, distance, '
     'cls, ndtw')
 METRICS = [
@@ -35,7 +35,7 @@ METRICS = [
     'spl',
     'ndtw',
     'cls',
-    'oracle_rate',
+    'oracle_success',
 ]
 
 
@@ -190,8 +190,9 @@ class Refer360Evaluation(object):
     ndtw = self.ndtw(prediction_path, gt['path'])
 
     return EvalResult(nav_error=nav_error, oracle_error=oracle_error,
-                      trajectory_steps=trajectory_steps,
-                      trajectory_length=trajectory_length, success=success,
+                      steps=trajectory_steps,
+                      length=trajectory_length,
+                      success=success,
                       oracle_success=oracle_success,
                       spl=spl,
                       fov_accuracy=fov_accuracy,
@@ -203,7 +204,8 @@ class Refer360Evaluation(object):
                       ndtw=ndtw,
                       )
 
-  def score_results(self, results):
+  def score_results(self, results,
+                    nfolds=1):
     # results should be a dictionary mapping instr_ids to dictionaries,
     # with each dictionary containing (at least) a 'trajectory' field
     # return a dict with key being a evaluation metric
@@ -221,6 +223,7 @@ class Refer360Evaluation(object):
 
     instr_count = 0
     done = list()
+    folds = {fold: defaultdict(list) for fold in range(nfolds)}
     for instr_id, result in results.items():
 
       if instr_id in instr_ids:
@@ -241,10 +244,10 @@ class Refer360Evaluation(object):
 
         self.scores['nav_error'].append(eval_result.nav_error)
         self.scores['oracle_error'].append(eval_result.oracle_error)
-        self.scores['trajectory_steps'].append(
-            eval_result.trajectory_steps)
-        self.scores['trajectory_length'].append(
-            eval_result.trajectory_length)
+        self.scores['steps'].append(
+            eval_result.steps)
+        self.scores['length'].append(
+            eval_result.length)
         self.scores['success'].append(eval_result.success)
         self.scores['oracle_success'].append(
             eval_result.oracle_success)
@@ -256,6 +259,10 @@ class Refer360Evaluation(object):
         self.scores['distance'].append(eval_result.distance)
         self.scores['cls'].append(eval_result.cls)
         self.scores['ndtw'].append(eval_result.ndtw)
+
+        fold = random.randint(0, nfolds-1)
+        for metric in self.scores.keys():
+          folds[fold][metric].append(self.scores[metric][-1])
 
         for sk in self.scores.keys():
           loc2scores[sk][img_loc].append(self.scores[sk][-1])
@@ -287,52 +294,19 @@ class Refer360Evaluation(object):
             len(instr_ids), len(self.instr_ids), ','.join(self.splits))
 
     assert len(self.scores['nav_error']) == len(self.instr_ids)
-    score_summary = {
-        'nav_error': np.average(self.scores['nav_error']),
-        'oracle_error': np.average(self.scores['oracle_error']),
-        'steps': np.average(self.scores['trajectory_steps']),
-        'lengths': np.average(self.scores['trajectory_length']),
-        'success': float(
-            sum(self.scores['success']) / len(self.scores['success'])),
-        'oracle_rate': float(sum(self.scores['oracle_success'])
-                             / len(self.scores['oracle_success'])),
-        'spl': float(sum(self.scores['spl'])) / len(self.scores['spl']),
-        'fov_accuracy': float(
-            sum(self.scores['fov_accuracy']) / len(self.scores['fov_accuracy'])),
-        'acc_40': float(
-            sum(self.scores['acc_40']) / len(self.scores['acc_40'])),
-        'acc_80': float(
-            sum(self.scores['acc_80']) / len(self.scores['acc_80'])),
-        'acc_120': float(
-            sum(self.scores['acc_120']) / len(self.scores['acc_120'])),
-        'distance': float(
-            sum(self.scores['distance']) / len(self.scores['distance'])),
-        'cls': float(sum(self.scores['cls'])) / len(self.scores['cls']),
-        'ndtw': float(sum(self.scores['ndtw'])) / len(self.scores['ndtw']),
-        'acc_40_std': np.std(self.scores['acc_40']),
-        'acc_80_std': np.std(self.scores['acc_80']),
-        'acc_120_std': np.std(self.scores['acc_120']),
-        'distance_std': np.std(self.scores['distance']),
-        'fov_accuracy_std': np.std(self.scores['fov_accuracy']),
-        'success_std': np.std(self.scores['success']),
-        'steps_std': np.std(self.scores['steps']),
-        'spl_std': np.std(self.scores['spl']),
-        'ndtw_std': np.std(self.scores['ndtw']),
-        'cls_std': np.std(self.scores['cls']),
-        'oracle_rate_std': np.std(self.scores['oracle_rate']),
-    }
+
+    score_summary = {}
+    for metric in self.scores:
+      means = []
+      for fold in range(nfolds):
+        means.append(np.mean(folds[fold][metric]))
+
+      score_summary[metric] = np.mean(means)
+      score_summary[metric + '_std'] = np.std(means)
+
     if len(model_scores) > 0:
       assert len(model_scores) == instr_count
       score_summary['model_score'] = np.average(model_scores)
-
-    num_successes = len(
-        [i for i in self.scores['nav_error'] if i < self.error_margin])
-    # score_summary['success'] = float(num_successes)/float(len(self.scores['nav_error']))  # NoQA
-    assert float(num_successes) / float(len(self.scores['nav_error'])) == score_summary['success']  # NoQA
-    oracle_successes = len(
-        [i for i in self.scores['oracle_error'] if i < self.error_margin])
-    assert float(oracle_successes) / float(len(self.scores['oracle_error'])) == score_summary['oracle_rate']  # NoQA
-    # score_summary['oracle_rate'] = float(oracle_successes) / float(len(self.scores['oracle_error']))  # NoQA
 
     analysis = {'loc2scores': loc2scores,
                 'scene2scores': scene2scores,
@@ -341,11 +315,13 @@ class Refer360Evaluation(object):
                 }
     return score_summary, self.scores, analysis
 
-  def score_file(self, output_file):
+  def score_file(self, output_file,
+                 nfolds=1):
     ''' Evaluate each agent trajectory based on how close it got to the
     goal location '''
     with open(output_file) as f:
-      return self.score_results(json.load(f))
+      return self.score_results(json.load(f),
+                                nfolds=nfolds)
 
   def score_test_file(self, output_file):
     with open(output_file) as f:
@@ -549,6 +525,8 @@ def eval_outfiles(args):
   sim.load_maps()
 
   for _f in os.listdir(outfolder):
+    if 'json' not in _f:
+      continue
     outfile = os.path.join(outfolder, _f)
     _splits = []
     for s in splits:
@@ -557,20 +535,28 @@ def eval_outfiles(args):
     ev = Refer360Evaluation(_splits,
                             args=args,
                             sim=sim)
-    score_summary, _, _ = ev.score_file(outfile)
-    print('\n', outfile)
+    score_summary, _, _ = ev.score_file(outfile,
+                                        nfolds=args.nfolds)
     pp.pprint(score_summary)
+    fname = outfile.replace('.json', '.csv')
+    csv_file = open(fname, 'w')
+    print('\n', fname)
     print('CSV below:')
-    if args.with_std:
-      print(','.join(['{} {}'.format(metric, metric+'(std)')
-                      for metric in METRICS]))
-      print(','.join(['{:4.3f} ({:4.4f})'.format(score_summary[metric], score_summary[metric+'_std'])
-                      for metric in METRICS]))
+    if args.nfolds > 1:
+      header = ','.join(['{} {}'.format(metric, metric+'(std)')
+                         for metric in METRICS])
+      numbers = ','.join(['{:4.3f} ({:4.4f})'.format(score_summary[metric], score_summary[metric+'_std'])
+                          for metric in METRICS])
+      print('\n'.join([header, numbers]))
     else:
-      print(','.join(['{}'.format(metric)
-                      for metric in METRICS]))
-      print(','.join(['{:4.3f}'.format(score_summary[metric])
-                      for metric in METRICS]))
+      header = ','.join(['{}'.format(metric)
+                         for metric in METRICS])
+      numbers = ','.join(['{:4.3f}'.format(score_summary[metric])
+                          for metric in METRICS])
+      print('\n'.join([header, numbers]))
+    csv_file.write(numbers+'\n')
+    csv_file.write(json.dumps(score_summary))
+    csv_file.close()
 
 
 if __name__ == '__main__':
@@ -579,7 +565,8 @@ if __name__ == '__main__':
   # TODO: take function to run as argument
   parser.add_argument('--results_path', type=str,
                       default='')
-  parser.add_argument('--with_std', action='store_true')
-
+  parser.add_argument('--nfolds',
+                      default=1,
+                      type=int)
   utils.run(parser, eval_outfiles)
   # utils.run(parser, eval_simple_agents)
