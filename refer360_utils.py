@@ -177,13 +177,14 @@ def load_butd(butd_filename,
   return fov2key
 
 
-def load_vectors(fname, vocab):
+def load_vectors(fname, vocab,
+                 filter_words=True):
   fin = io.open(fname, 'r', encoding='utf-8', newline='\n', errors='ignore')
   n, d = map(int, fin.readline().split())
   data = {}
   for line in fin:
     tokens = line.rstrip().split(' ')
-    if tokens[0] not in vocab:
+    if tokens[0] not in vocab and filter_words:
       continue
     data[tokens[0]] = np.array([float(v) for v in tokens[1:]])
   return data

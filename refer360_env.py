@@ -410,7 +410,7 @@ class Refer360EnvBatch():
     self.beam_size = beam_size
     self.cache_root = cache_root
     if args:
-      if args.prefix == 'refer360':
+      if args.prefix in ['refer360', 'r360tiny']:
         width, height = 4552, 2276
       elif args.prefix in ['touchdown', 'td']:
         width, height = 3000, 1500

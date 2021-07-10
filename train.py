@@ -20,6 +20,9 @@ from utils import get_confusion_matrix_image, get_bar_image
 
 from model import BertEncoder, EncoderLSTM, AttnDecoderLSTM
 from model import CogroundDecoderLSTM, ProgressMonitor, DeviationMonitor
+from model import HallucinationDecoderLSTM0
+from model import HallucinationDecoderLSTM1
+from model import HallucinationDecoderLSTM2
 from model import SpeakerEncoderLSTM, DotScorer, BacktrackButton
 from follower import Seq2SeqAgent, RandomAgent
 from scorer import Scorer
@@ -32,6 +35,36 @@ import refer360_eval
 from vocab import SUBTRAIN_VOCAB, TRAIN_VOCAB
 from tensorboardX import SummaryWriter
 
+DECODER2PREFIX = {
+    'coground': '_cg',
+    'attention': '_att',
+    'hal0': '_hal0',
+    'hal1': '_hal1',
+    'hal2': '_hal2'
+}
+
+DECODER2MODEL = {
+    'coground': CogroundDecoderLSTM,
+    'attention': AttnDecoderLSTM,
+    'hal0': HallucinationDecoderLSTM0,
+    'hal1': HallucinationDecoderLSTM1,
+    'hal2': HallucinationDecoderLSTM2
+}
+
+
+def get_word_embedding_size(args):
+  if args.decoder == 'coground' or args.bidirectional:
+    return int(
+        args.hidden_size / 2)
+  else:
+    return args.hidden_size
+
+
+def get_action_embedding_size(args, action_embedding_size):
+  if not args.decoder == 'coground' and args.use_visited_embeddings:
+    action_embedding_size -= 64
+  return action_embedding_size
+
 
 def get_model_prefix(args, image_feature_list,
                      dump_args=False):
@@ -41,7 +74,7 @@ def get_model_prefix(args, image_feature_list,
       ('_bt' if args.bert else ''),
       ('_sc' if args.scorer else ''),
       ('_mh' if args.num_head > 1 else ''),
-      ('_cg' if args.coground else ''),
+      (DECODER2PREFIX[args.decoder]),
       ('_pm' if args.prog_monitor else ''),
       ('_sa' if args.soft_align else ''),
       ('_bi' if args.bidirectional else ''),
@@ -285,9 +318,8 @@ def make_follower(args, vocab,
     Encoder = EncoderLSTM
   args.visual_hidden_size = args.hidden_size * 2
 
-  Decoder = CogroundDecoderLSTM if args.coground else AttnDecoderLSTM
-  word_embedding_size = int(
-      args.hidden_size / 2) if args.coground or args.bidirectional else args.hidden_size
+  Decoder = DECODER2MODEL[args.decoder]
+  word_embedding_size = get_word_embedding_size(args)
   encoder = try_cuda(Encoder(len(vocab), word_embedding_size, enc_hidden_size, vocab_pad_idx, args.dropout_ratio,
                              bidirectional=args.bidirectional,
                              glove=glove,
@@ -300,8 +332,9 @@ def make_follower(args, vocab,
       max_len=args.max_input_length,
       visual_hidden_size=args.visual_hidden_size,
       visual_context_size=feature_size))
-  if not args.coground and args.use_visited_embeddings:
-    action_embedding_size -= 64
+
+  action_embedding_size = get_action_embedding_size(
+      args, action_embedding_size)
   prog_monitor = try_cuda(ProgressMonitor(action_embedding_size,
                                           args.hidden_size, text_len=args.max_input_length)) if args.prog_monitor else None
   bt_button = try_cuda(BacktrackButton()) if args.bt_button else None
@@ -492,7 +525,8 @@ def make_arg_parser():
   parser.add_argument('--bert', action='store_true')
   parser.add_argument('--num_head', type=int, default=1)
   parser.add_argument('--scorer', action='store_true')
-  parser.add_argument('--coground', action='store_false')
+  parser.add_argument('--decoder', type=str, default='coground',
+                      help='decoder type, default=coground')
   parser.add_argument('--prog_monitor', action='store_false')
   parser.add_argument('--dev_monitor', action='store_true')
   parser.add_argument('--soft_align', action='store_true')
