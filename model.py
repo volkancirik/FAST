@@ -808,7 +808,7 @@ class HallucinationDecoderLSTM2(nn.Module):
                                                      visual_hidden_size)
     self.visual_hidden_size = visual_hidden_size
 
-    embeddings = np.random.randn(n_objects, obj_dim, dtype=np.float32)
+    embeddings = np.random.randn(n_objects, obj_dim)
     if load_embeddings:
       from refer360_utils import get_object_dictionaries, load_vectors
       word_embedding_path = './tasks/FAST/data/cc.en.300.vec'
