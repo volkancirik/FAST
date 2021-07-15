@@ -811,7 +811,7 @@ class HallucinationDecoderLSTM2(nn.Module):
     embeddings = np.random.randn(n_objects, obj_dim)
     if load_embeddings:
       from refer360_utils import get_object_dictionaries, load_vectors
-      word_embedding_path = './tasks/FAST/data/cc.en.300.vec'
+      word_embedding_path = './tasks/FAST/data/wordvec.glove'
       obj_dict_file = './tasks/FAST/data/vg_object_dictionaries.all.json'
       vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name = get_object_dictionaries(
           obj_dict_file, return_all=True)
