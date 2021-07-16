@@ -486,7 +486,8 @@ class AttnDecoderLSTM(nn.Module):
                num_head=8,
                max_len=-1,
                visual_hidden_size=-1,
-               args=None):
+               args=None,
+               num_actions=None):
     super(AttnDecoderLSTM, self).__init__()
     self.embedding_size = embedding_size
     self.feature_size = feature_size
@@ -498,7 +499,7 @@ class AttnDecoderLSTM(nn.Module):
     self.lstm = nn.LSTMCell(embedding_size+visual_context_size, hidden_size)
     self.visual_attention_layer = VisualSoftDotAttention(
         hidden_size, self.visual_context_size)
-    #self.text_attention_layer = SoftDotMultihead(hidden_size, num_head)
+    # self.text_attention_layer = SoftDotMultihead(hidden_size, num_head)
     self.text_attention_layer = SoftDotAttention(hidden_size)
     self.decoder2action = EltwiseProdScoring(hidden_size, embedding_size)
 
@@ -520,7 +521,7 @@ class AttnDecoderLSTM(nn.Module):
     drop = self.drop(concat_input)
     h_1, c_1 = self.lstm(drop, (h_0, c_0))
     h_1_drop = self.drop(h_1)
-    #attn_text, alpha_t = self.text_attention_layer(h_1_drop, ctx, ctx, ctx_mask)
+    # attn_text, alpha_t = self.text_attention_layer(h_1_drop, ctx, ctx, ctx_mask)
     attn_text, alpha_t = self.text_attention_layer(h_1_drop, ctx, ctx_mask)
     logit = self.decoder2action(attn_text, all_u_t)
     return h_1, c_1, attn_text, attn_vision, alpha_t, logit, alpha_v
@@ -535,7 +536,8 @@ class CogroundDecoderLSTM(nn.Module):
                feature_size=2048+128+24, image_attention_layers=None,
                visual_hidden_size=1024, num_head=8,
                max_len=80, visual_context_size=-1,
-               args=None):
+               args=None,
+               num_actions=None):
     super(CogroundDecoderLSTM, self).__init__()
 
     self.embedding_size = embedding_size
@@ -559,7 +561,7 @@ class CogroundDecoderLSTM(nn.Module):
         nn.ReLU())
     self.action_attention_layer = WhSoftDotAttention(
         hidden_size+hidden_size, visual_hidden_size)
-    #self.action_attention_layer = VisualSoftDotAttention(hidden_size+hidden_size, visual_hidden_size)
+    # self.action_attention_layer = VisualSoftDotAttention(hidden_size+hidden_size, visual_hidden_size)
     self.sm = nn.Softmax(dim=1)
 
   def forward(self, u_t_prev, all_u_t, visual_context, h_0, c_0, ctx,
@@ -587,11 +589,11 @@ class CogroundDecoderLSTM(nn.Module):
     alpha_vision = self.sm(_alpha_vision)
 
     concat_input = torch.cat((attn_text, attn_vision, u_t_prev), 1)
-    #drop = self.drop(concat_input)
+    # drop = self.drop(concat_input)
     drop = concat_input
     h_1, c_1 = self.lstm(drop, (h_0, c_0))
 
-    #action_selector = self.drop(torch.cat((attn_text, h_1), 1))
+    # action_selector = self.drop(torch.cat((attn_text, h_1), 1))
     action_selector = torch.cat((attn_text, h_1), 1)
     _, alpha_action = self.action_attention_layer(action_selector, g_v)
     return h_1, c_1, attn_text, attn_vision, alpha_text, alpha_action, alpha_vision
@@ -606,7 +608,8 @@ class HallucinationDecoderLSTM0(nn.Module):
                feature_size=2048+128+24, image_attention_layers=None,
                visual_hidden_size=1024, num_head=8,
                max_len=80, visual_context_size=-1,
-               args=None):
+               args=None,
+               num_actions=9):
     super(HallucinationDecoderLSTM0, self).__init__()
 
     self.embedding_size = embedding_size
@@ -638,7 +641,7 @@ class HallucinationDecoderLSTM0(nn.Module):
 
     self.action_attention_layer = WhSoftDotAttention(
         hidden_size, visual_hidden_size)
-    #self.action_attention_layer = VisualSoftDotAttention(hidden_size+hidden_size, visual_hidden_size)
+    # self.action_attention_layer = VisualSoftDotAttention(hidden_size+hidden_size, visual_hidden_size)
     self.sm = nn.Softmax(dim=1)
 
   def forward(self, u_t_prev, all_u_t, visual_context, h_0, c_0, ctx,
@@ -684,7 +687,8 @@ class HallucinationDecoderLSTM1(nn.Module):
                n_objects=360,
                obj_dim=300,
                args=None,
-               bilinear_size=16):
+               bilinear_size=16,
+               num_actions=9):
     super(HallucinationDecoderLSTM1, self).__init__()
 
     self.embedding_size = embedding_size
@@ -733,7 +737,7 @@ class HallucinationDecoderLSTM1(nn.Module):
 
     self.action_attention_layer = WhSoftDotAttention(
         hidden_size, visual_hidden_size)
-    #self.action_attention_layer = VisualSoftDotAttention(hidden_size+hidden_size, visual_hidden_size)
+    # self.action_attention_layer = VisualSoftDotAttention(hidden_size+hidden_size, visual_hidden_size)
     self.sm = nn.Softmax(dim=1)
 
   def forward(self, u_t_prev, all_u_t, visual_context, h_0, c_0, ctx,
@@ -790,7 +794,8 @@ class HallucinationDecoderLSTM2(nn.Module):
                obj_dim=300,
                args=None,
                load_embeddings=True,
-               bilinear_size=16):
+               bilinear_size=16,
+               num_actions=9):
     super(HallucinationDecoderLSTM2, self).__init__()
 
     self.embedding_size = embedding_size
@@ -896,6 +901,394 @@ class HallucinationDecoderLSTM2(nn.Module):
     g_t = self.text_mlp(attn_text)
 
     fused_input = g_t * attn_vision * u_t_prev
+    h_1, c_1 = self.lstm(fused_input, (h_0, c_0))
+
+    action_selector = attn_text * h_1
+    _, alpha_action = self.action_attention_layer(action_selector, g_v)
+
+    return h_1, c_1, attn_text, attn_vision, alpha_text, alpha_action, alpha_vision
+
+
+class HallucinationDecoderLSTM3(nn.Module):
+  def __init__(self, embedding_size, hidden_size, dropout_ratio,
+               feature_size=2048+128+24, image_attention_layers=None,
+               visual_hidden_size=1024, num_head=8,
+               max_len=80, visual_context_size=-1,
+               n_objects=360,
+               obj_dim=300,
+               args=None,
+               load_embeddings=True,
+               bilinear_size=16,
+               num_actions=9):
+    super(HallucinationDecoderLSTM3, self).__init__()
+
+    self.embedding_size = embedding_size
+    self.feature_size = feature_size
+    self.hidden_size = hidden_size
+    self.u_begin = try_cuda(Variable(
+        torch.zeros(embedding_size), requires_grad=False))
+    self.drop = nn.Dropout(p=dropout_ratio)
+    # For now the text attention output size is hidden_size
+    self.lstm = nn.LSTMCell(embedding_size, hidden_size)
+    self.text_attention_layer = WhSoftDotAttention(hidden_size, hidden_size)
+    self.positional_encoding = PositionalEncoding(
+        hidden_size, dropout=0, max_len=max_len)
+    self.visual_attention_layer = WhSoftDotAttention(hidden_size,
+                                                     visual_hidden_size)
+    self.visual_hidden_size = visual_hidden_size
+
+    embeddings = np.random.randn(n_objects, obj_dim)
+    if load_embeddings:
+      from refer360_utils import get_object_dictionaries, load_vectors
+      word_embedding_path = './tasks/FAST/data/wordvec.glove'
+      obj_dict_file = './tasks/FAST/data/vg_object_dictionaries.all.json'
+      vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name = get_object_dictionaries(
+          obj_dict_file, return_all=True)
+      if n_objects != len(obj_classes):
+        print('n_objects != len(obj_classes) {} {}'.format(
+            n_objects, len(obj_classes)))
+        quit(0)
+
+      print('loading w2v...', word_embedding_path)
+      w2v = load_vectors(word_embedding_path, {},
+                         filter_words=False)
+
+      for ii, obj in enumerate(obj_classes):
+        for obj_token in obj.split(' '):
+          embeddings[ii, :] += w2v.get(obj_token, np.zeros((obj_dim,)))
+      print('done initializing embeddings')
+    self.n_objects = n_objects
+    self.obj_dim = obj_dim
+    self.obj_embedding = nn.parameter.Parameter(
+        torch.tensor(embeddings).float()).cuda()
+    self.num_actions = num_actions
+    self.act_embedding = nn.parameter.Parameter(
+        torch.randn(self.num_actions, self.embedding_size).cuda())
+
+    self.bilinear_size = bilinear_size
+    self.bilinear = torch.nn.Bilinear(
+        feature_size, feature_size, self.bilinear_size)
+    self.obj_mlp = nn.Sequential(
+        nn.BatchNorm1d(self.bilinear_size),
+        nn.Linear(self.bilinear_size, n_objects),
+        nn.BatchNorm1d(n_objects),
+        nn.Dropout(dropout_ratio),
+        nn.Sigmoid())
+
+    self.visual_mlp = nn.Sequential(
+        nn.BatchNorm1d(self.obj_dim),
+        nn.Linear(self.obj_dim, visual_hidden_size),
+        nn.BatchNorm1d(visual_hidden_size),
+        nn.Dropout(dropout_ratio),
+        nn.ReLU())
+    self.text_mlp = nn.Sequential(
+        nn.BatchNorm1d(hidden_size),
+        nn.Linear(hidden_size, embedding_size),
+        nn.BatchNorm1d(embedding_size),
+        nn.Dropout(dropout_ratio),
+        nn.ReLU())
+
+    self.action_attention_layer = WhSoftDotAttention(
+        hidden_size, visual_hidden_size)
+    self.sm = nn.Softmax(dim=1)
+
+  def forward(self, u_t_prev, all_u_t, visual_context, h_0, c_0, ctx,
+              ctx_mask=None):
+    '''
+    u_t_prev: batch x embedding_size
+    all_u_t: batch x a_num x embedding_size
+    visual_context: batch x v_num x feature_size => panoramic view, DEP
+    h_0: batch x hidden_size
+    c_0: batch x hidden_size
+    ctx: batch x seq_len x dim
+    ctx_mask: batch x seq_len - indices to be masked
+    '''
+    ctx_pos = self.positional_encoding(ctx)
+    attn_text, _alpha_text = self.text_attention_layer(
+        h_0, ctx_pos, v=ctx, mask=ctx_mask)
+    alpha_text = self.sm(_alpha_text)
+
+    batch_size, a_size, _ = all_u_t.size()
+
+    visual_context = visual_context + \
+        self.act_embedding.unsqueeze(0).repeat(batch_size, 1, 1)
+    obj_feats = self.obj_mlp(self.bilinear(visual_context, all_u_t).view(
+        -1, self.bilinear_size)).view(batch_size, a_size, self.n_objects)
+
+    obj_u_t = torch.bmm(obj_feats, self.obj_embedding.unsqueeze(
+        0).repeat(batch_size, 1, 1))
+
+    g_v = obj_u_t.view(-1, self.obj_dim)
+    g_v = self.visual_mlp(g_v).view(batch_size, a_size, -1)
+    attn_vision, _alpha_vision = self.visual_attention_layer(
+        h_0, g_v, v=all_u_t)
+    alpha_vision = self.sm(_alpha_vision)
+
+    g_t = self.text_mlp(attn_text)
+
+    fused_input = g_t + attn_vision + u_t_prev
+    h_1, c_1 = self.lstm(fused_input, (h_0, c_0))
+
+    action_selector = attn_text * h_1
+    _, alpha_action = self.action_attention_layer(action_selector, g_v)
+
+    return h_1, c_1, attn_text, attn_vision, alpha_text, alpha_action, alpha_vision
+
+
+class HallucinationDecoderLSTM4(nn.Module):
+  def __init__(self, embedding_size, hidden_size, dropout_ratio,
+               feature_size=2048+128+24, image_attention_layers=None,
+               visual_hidden_size=1024, num_head=8,
+               max_len=80, visual_context_size=-1,
+               n_objects=360,
+               obj_dim=300,
+               args=None,
+               load_embeddings=True,
+               bilinear_size=16,
+               num_actions=9):
+    super(HallucinationDecoderLSTM4, self).__init__()
+
+    self.embedding_size = embedding_size
+    self.feature_size = feature_size
+    self.hidden_size = hidden_size
+    self.u_begin = try_cuda(Variable(
+        torch.zeros(embedding_size), requires_grad=False))
+    self.drop = nn.Dropout(p=dropout_ratio)
+    # For now the text attention output size is hidden_size
+    self.lstm = nn.LSTMCell(embedding_size, hidden_size)
+    self.text_attention_layer = WhSoftDotAttention(hidden_size, hidden_size)
+    self.positional_encoding = PositionalEncoding(
+        hidden_size, dropout=0, max_len=max_len)
+    self.visual_attention_layer = WhSoftDotAttention(hidden_size,
+                                                     visual_hidden_size)
+    self.visual_hidden_size = visual_hidden_size
+
+    embeddings = np.random.randn(n_objects, obj_dim)
+    from refer360_utils import get_object_dictionaries, load_vectors
+    if load_embeddings:
+      word_embedding_path = './tasks/FAST/data/wordvec.glove'
+      obj_dict_file = './tasks/FAST/data/vg_object_dictionaries.all.json'
+      vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name = get_object_dictionaries(
+          obj_dict_file, return_all=True)
+      if n_objects != len(obj_classes):
+        print('n_objects != len(obj_classes) {} {}'.format(
+            n_objects, len(obj_classes)))
+        quit(0)
+
+      print('loading w2v...', word_embedding_path)
+      w2v = load_vectors(word_embedding_path, {},
+                         filter_words=False)
+
+      for ii, obj in enumerate(obj_classes):
+        for obj_token in obj.split(' '):
+          embeddings[ii, :] += w2v.get(obj_token, np.zeros((obj_dim,)))
+      print('done initializing embeddings')
+    self.n_objects = n_objects
+    self.obj_dim = obj_dim
+    self.obj_embedding = nn.parameter.Parameter(
+        torch.tensor(embeddings).float()).cuda()
+    self.num_actions = num_actions
+    self.act_embedding = nn.parameter.Parameter(
+        torch.randn(self.num_actions, self.embedding_size).cuda())
+
+    self.bilinear_size = bilinear_size
+    self.bilinear = torch.nn.Bilinear(
+        feature_size, feature_size, self.bilinear_size)
+    self.obj_mlp = nn.Sequential(
+        nn.BatchNorm1d(self.bilinear_size),
+        nn.Linear(self.bilinear_size, n_objects),
+        nn.BatchNorm1d(n_objects),
+        nn.Dropout(dropout_ratio),
+        nn.Sigmoid())
+
+    self.visual_mlp = nn.Sequential(
+        nn.BatchNorm1d(self.obj_dim),
+        nn.Linear(self.obj_dim, visual_hidden_size),
+        nn.BatchNorm1d(visual_hidden_size),
+        nn.Dropout(dropout_ratio),
+        nn.ReLU())
+    nn.BatchNorm1d(hidden_size),
+    self.text_mlp = nn.Sequential(
+        nn.Linear(hidden_size, embedding_size),
+        nn.BatchNorm1d(embedding_size),
+        nn.Dropout(dropout_ratio),
+
+        nn.ReLU())
+    self.action_attention_layer = WhSoftDotAttention(
+        hidden_size, visual_hidden_size)
+    self.sm = nn.Softmax(dim=1)
+
+  def forward(self, u_t_prev, all_u_t, visual_context, h_0, c_0, ctx,
+              ctx_mask=None):
+    '''
+    u_t_prev: batch x embedding_size
+    all_u_t: batch x a_num x embedding_size
+    visual_context: batch x v_num x feature_size => panoramic view, DEP
+    h_0: batch x hidden_size
+    c_0: batch x hidden_size
+    ctx: batch x seq_len x dim
+    ctx_mask: batch x seq_len - indices to be masked
+    '''
+    ctx_pos = self.positional_encoding(ctx)
+    attn_text, _alpha_text = self.text_attention_layer(
+        h_0, ctx_pos, v=ctx, mask=ctx_mask)
+    alpha_text = self.sm(_alpha_text)
+    g_t = self.text_mlp(attn_text)
+
+    batch_size, a_size, _ = all_u_t.size()
+
+    term1 = visual_context
+    term2 = self.act_embedding.unsqueeze(0).repeat(
+        batch_size, 1, 1)
+    term3 = g_t.unsqueeze(1).repeat(1, self.num_actions, 1)
+    visual_context = term1 + term2 + term3
+
+    bilinear = self.bilinear(visual_context, all_u_t)
+    proj_bilinear = self.obj_mlp(bilinear.view(
+        -1, self.bilinear_size))
+    obj_feats = proj_bilinear.view(batch_size, a_size, self.n_objects)
+
+    obj_u_t = torch.bmm(obj_feats, self.obj_embedding.unsqueeze(
+        0).repeat(batch_size, 1, 1))
+
+    g_v = obj_u_t.view(-1, self.obj_dim)
+    g_v = self.visual_mlp(g_v).view(batch_size, a_size, -1)
+    attn_vision, _alpha_vision = self.visual_attention_layer(
+        h_0, g_v, v=all_u_t)
+    alpha_vision = self.sm(_alpha_vision)
+
+    fused_input = g_t + attn_vision + u_t_prev
+    h_1, c_1 = self.lstm(fused_input, (h_0, c_0))
+
+    action_selector = attn_text * h_1
+    _, alpha_action = self.action_attention_layer(action_selector, g_v)
+
+    return h_1, c_1, attn_text, attn_vision, alpha_text, alpha_action, alpha_vision
+
+
+class HallucinationDecoderLSTM5(nn.Module):
+  def __init__(self, embedding_size, hidden_size, dropout_ratio,
+               feature_size=2048+128+24, image_attention_layers=None,
+               visual_hidden_size=1024, num_head=8,
+               max_len=80, visual_context_size=-1,
+               n_objects=360,
+               obj_dim=300,
+               args=None,
+               load_embeddings=True,
+               bilinear_size=16,
+               num_actions=9):
+    super(HallucinationDecoderLSTM5, self).__init__()
+
+    self.embedding_size = embedding_size
+    self.feature_size = feature_size
+    self.hidden_size = hidden_size
+    self.u_begin = try_cuda(Variable(
+        torch.zeros(embedding_size), requires_grad=False))
+    self.drop = nn.Dropout(p=dropout_ratio)
+    # For now the text attention output size is hidden_size
+    self.lstm = nn.LSTMCell(embedding_size, hidden_size)
+    self.text_attention_layer = WhSoftDotAttention(hidden_size, hidden_size)
+    self.positional_encoding = PositionalEncoding(
+        hidden_size, dropout=0, max_len=max_len)
+    self.visual_attention_layer = WhSoftDotAttention(hidden_size,
+                                                     visual_hidden_size)
+    self.visual_hidden_size = visual_hidden_size
+
+    embeddings = np.random.randn(n_objects, obj_dim)
+    from refer360_utils import get_object_dictionaries, load_vectors
+    if load_embeddings:
+      word_embedding_path = './tasks/FAST/data/wordvec.glove'
+      obj_dict_file = './tasks/FAST/data/vg_object_dictionaries.all.json'
+      vg2idx, idx2vg, obj_classes, name2vg, name2idx, vg2name = get_object_dictionaries(
+          obj_dict_file, return_all=True)
+      if n_objects != len(obj_classes):
+        print('n_objects != len(obj_classes) {} {}'.format(
+            n_objects, len(obj_classes)))
+        quit(0)
+
+      print('loading w2v...', word_embedding_path)
+      w2v = load_vectors(word_embedding_path, {},
+                         filter_words=False)
+
+      for ii, obj in enumerate(obj_classes):
+        for obj_token in obj.split(' '):
+          embeddings[ii, :] += w2v.get(obj_token, np.zeros((obj_dim,)))
+      print('done initializing embeddings')
+    self.n_objects = n_objects
+    self.obj_dim = obj_dim
+    self.obj_embedding = nn.parameter.Parameter(
+        torch.tensor(embeddings).float()).cuda()
+    self.num_actions = num_actions
+    self.act_embedding = nn.parameter.Parameter(
+        torch.randn(self.num_actions, self.embedding_size).cuda())
+
+    self.bilinear_size = bilinear_size
+    self.bilinear = torch.nn.Bilinear(
+        feature_size, feature_size, self.bilinear_size)
+    self.obj_mlp = nn.Sequential(
+        nn.BatchNorm1d(self.bilinear_size),
+        nn.Linear(self.bilinear_size, n_objects),
+        nn.BatchNorm1d(n_objects),
+        nn.Dropout(dropout_ratio),
+        nn.Sigmoid())
+
+    self.visual_mlp = nn.Sequential(
+        nn.BatchNorm1d(self.obj_dim),
+        nn.Linear(self.obj_dim, visual_hidden_size),
+        nn.BatchNorm1d(visual_hidden_size),
+        nn.Dropout(dropout_ratio),
+        nn.ReLU())
+    nn.BatchNorm1d(hidden_size),
+    self.text_mlp = nn.Sequential(
+        nn.Linear(hidden_size, embedding_size),
+        nn.BatchNorm1d(embedding_size),
+        nn.Dropout(dropout_ratio),
+
+        nn.ReLU())
+    self.action_attention_layer = WhSoftDotAttention(
+        hidden_size, visual_hidden_size)
+    self.sm = nn.Softmax(dim=1)
+
+  def forward(self, u_t_prev, all_u_t, visual_context, h_0, c_0, ctx,
+              ctx_mask=None):
+    '''
+    u_t_prev: batch x embedding_size
+    all_u_t: batch x a_num x embedding_size
+    visual_context: batch x v_num x feature_size => panoramic view, DEP
+    h_0: batch x hidden_size
+    c_0: batch x hidden_size
+    ctx: batch x seq_len x dim
+    ctx_mask: batch x seq_len - indices to be masked
+    '''
+    ctx_pos = self.positional_encoding(ctx)
+    attn_text, _alpha_text = self.text_attention_layer(
+        h_0, ctx_pos, v=ctx, mask=ctx_mask)
+    alpha_text = self.sm(_alpha_text)
+    g_t = self.text_mlp(attn_text)
+
+    batch_size, a_size, _ = all_u_t.size()
+
+    term1 = visual_context
+    term2 = self.act_embedding.unsqueeze(0).repeat(
+        batch_size, 1, 1)
+    term3 = g_t.unsqueeze(1).repeat(1, self.num_actions, 1)
+    visual_context = term1 + term2 + term3
+
+    bilinear = self.bilinear(all_u_t, visual_context)
+    proj_bilinear = self.obj_mlp(bilinear.view(
+        -1, self.bilinear_size))
+    obj_feats = proj_bilinear.view(batch_size, a_size, self.n_objects)
+
+    obj_u_t = torch.bmm(obj_feats, self.obj_embedding.unsqueeze(
+        0).repeat(batch_size, 1, 1))
+
+    g_v = obj_u_t.view(-1, self.obj_dim)
+    g_v = self.visual_mlp(g_v).view(batch_size, a_size, -1)
+    attn_vision, _alpha_vision = self.visual_attention_layer(
+        h_0, g_v, v=all_u_t)
+    alpha_vision = self.sm(_alpha_vision)
+
+    fused_input = g_t + attn_vision + u_t_prev
     h_1, c_1 = self.lstm(fused_input, (h_0, c_0))
 
     action_selector = attn_text * h_1

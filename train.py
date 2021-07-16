@@ -23,6 +23,9 @@ from model import CogroundDecoderLSTM, ProgressMonitor, DeviationMonitor
 from model import HallucinationDecoderLSTM0
 from model import HallucinationDecoderLSTM1
 from model import HallucinationDecoderLSTM2
+from model import HallucinationDecoderLSTM3
+from model import HallucinationDecoderLSTM4
+from model import HallucinationDecoderLSTM5
 from model import SpeakerEncoderLSTM, DotScorer, BacktrackButton
 from follower import Seq2SeqAgent, RandomAgent
 from scorer import Scorer
@@ -40,7 +43,10 @@ DECODER2PREFIX = {
     'attention': '_att',
     'hal0': '_hal0',
     'hal1': '_hal1',
-    'hal2': '_hal2'
+    'hal2': '_hal2',
+    'hal3': '_hal3',
+    'hal4': '_hal4',
+    'hal5': '_hal5',
 }
 
 DECODER2MODEL = {
@@ -48,8 +54,23 @@ DECODER2MODEL = {
     'attention': AttnDecoderLSTM,
     'hal0': HallucinationDecoderLSTM0,
     'hal1': HallucinationDecoderLSTM1,
-    'hal2': HallucinationDecoderLSTM2
+    'hal2': HallucinationDecoderLSTM2,
+    'hal3': HallucinationDecoderLSTM3,
+    'hal4': HallucinationDecoderLSTM4,
+    'hal5': HallucinationDecoderLSTM5
 }
+
+
+def get_max_num_a(args):
+  if args.decoder in ['coground', 'attention']:
+    return -1
+  else:
+    if args.prefix in ['touchdown', 'td', 'refer360', 'r360tiny']:
+      return 9
+    elif args.prefix in ['r2r', 'R2R', 'REVERIE', 'RxR_en-ALL']:
+      return 36
+    else:
+      raise NotImplementedError()
 
 
 def get_word_embedding_size(args):
@@ -324,14 +345,15 @@ def make_follower(args, vocab,
                              bidirectional=args.bidirectional,
                              glove=glove,
                              num_layers=args.encoder_num_layers))
-
+  max_num_a = get_max_num_a(args)
   decoder = try_cuda(Decoder(
       action_embedding_size, args.hidden_size, args.dropout_ratio,
       feature_size=feature_size,
       num_head=args.num_head,
       max_len=args.max_input_length,
       visual_hidden_size=args.visual_hidden_size,
-      visual_context_size=feature_size))
+      visual_context_size=feature_size,
+      num_actions=max_num_a))
 
   action_embedding_size = get_action_embedding_size(
       args, action_embedding_size)
@@ -345,7 +367,8 @@ def make_follower(args, vocab,
       None, '', encoder, decoder, args.max_episode_len,
       max_instruction_length=args.max_input_length,
       attn_only_verb=args.attn_only_verb,
-      clip_rate=args.clip_rate)
+      clip_rate=args.clip_rate,
+      max_num_a=max_num_a)
   agent.prog_monitor = prog_monitor
   agent.dev_monitor = dev_monitor
   agent.bt_button = bt_button

@@ -69,6 +69,8 @@ def _get_panorama_states(sim):
         'rel_heading': adj['lng'] - state.heading,
         'rel_elevation': adj['lat'] - state.elevation,
         'distance': sim.distances[adj['idx']][state.viewpointId],
+        'ylat': adj['lat'],
+        'xlng': adj['lng'],
     }
 
   stop = {

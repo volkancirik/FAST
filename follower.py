@@ -318,7 +318,8 @@ class Seq2SeqAgent(BaseAgent):
                reverse_instruction=True,
                max_instruction_length=80,
                attn_only_verb=False,
-               clip_rate=100.):
+               clip_rate=100.,
+               max_num_a=-1):
     super(self.__class__, self).__init__(env, results_path)
     self.encoder = encoder
     self.decoder = decoder
@@ -337,6 +338,7 @@ class Seq2SeqAgent(BaseAgent):
     self.soft_align = False
     self.want_loss = False
     self.clip_rate = clip_rate
+    self.max_num_a = max_num_a
 
   def _feature_variables(self, obs, beamed=False):
     ''' Extract precomputed features into variable. '''
@@ -349,7 +351,7 @@ class Seq2SeqAgent(BaseAgent):
 
   def _action_variable(self, obs):
     # get the maximum number of actions of all sample in this batch
-    max_num_a = -1
+    max_num_a = self.max_num_a
     for i, ob in enumerate(obs):
       max_num_a = max(max_num_a, len(ob['adj_loc_list']))
 
@@ -359,12 +361,16 @@ class Seq2SeqAgent(BaseAgent):
     action_embeddings = np.zeros(
         (len(obs), max_num_a, action_embedding_dim),
         dtype=np.float32)
+    _num_a_list = []
     for i, ob in enumerate(obs):
       adj_loc_list = ob['adj_loc_list']
       num_a = len(adj_loc_list)
       is_valid[i, 0:num_a] = 1.
       for n_a, adj_dict in enumerate(adj_loc_list):
         action_embeddings[i, :num_a, :] = ob['action_embedding']
+
+      _num_a_list.append(num_a)
+
     return (
         Variable(torch.from_numpy(action_embeddings),
                  requires_grad=False).cuda(),

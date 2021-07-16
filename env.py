@@ -68,6 +68,12 @@ def _build_action_embedding(adj_loc_list, features):
     feature_dim += feature.shape[-1]
 
   embedding = np.zeros((len(adj_loc_list), feature_dim + 128), np.float32)
+  # 'STOP' adj == current location thus rel_{heading,elevation}=0
+  embedding[0, 0:32] = np.sin(0)
+  embedding[0, 32:64] = np.cos(0)
+  embedding[0, 64:96] = np.sin(0)
+  embedding[0, 96:] = np.cos(0)
+
   for a, adj_dict in enumerate(adj_loc_list):
     if a == 0:
       # the embedding for the first action ('stop') is left as zero
@@ -335,7 +341,7 @@ class ImageFeatures(object):
                                              nextstep=args.nextstep))
       if 'reverie' in image_feature_type:
         feats.append(ReverieFeatures(use_object_embeddings=args.use_object_embeddings,
-                                             nextstep=args.nextstep))
+                                     nextstep=args.nextstep))
 
       if 'none' in image_feature_type:
         feats.append(NoImageFeatures())
@@ -485,8 +491,9 @@ class MeanPooledImageFeatures(ImageFeatures):
       for neighbor in neighbors:
         absViewIndex = neighbor['absViewIndex']
         nextpano = neighbor['nextViewpointId']
-        neighbor_feature = np.sum(self.features['{}_{}'.format(scan, nextpano)],axis=0).reshape(1,self.feature_dim)
-        nextstep_features[long_id][absViewIndex,:] = neighbor_feature
+        neighbor_feature = np.sum(self.features['{}_{}'.format(
+            scan, nextpano)], axis=0).reshape(1, self.feature_dim)
+        nextstep_features[long_id][absViewIndex, :] = neighbor_feature
 
     print('missed {} panos'.format(missed_pano))
     self.features = nextstep_features
@@ -505,12 +512,13 @@ class MeanPooledImageFeatures(ImageFeatures):
       name += '_nextstep'
     return name
 
+
 class ReverieFeatures(ImageFeatures):
   def __init__(self,
                box_root='./tasks/FAST/data/BBox/',
                word_embedding_path='./tasks/FAST/data/cc.en.300.vec',
-               nextstep = False,
-               use_object_embeddings = False):
+               nextstep=False,
+               use_object_embeddings=False):
 
     print('Loading ReverieFeatures')
     self.features = defaultdict(list)
@@ -603,8 +611,9 @@ class ReverieFeatures(ImageFeatures):
       for neighbor in neighbors:
         absViewIndex = neighbor['absViewIndex']
         nextpano = neighbor['nextViewpointId']
-        neighbor_feature = np.sum(self.features['{}_{}'.format(scan, nextpano)],axis=0).reshape(1,self.feature_dim)
-        nextstep_features[long_id][absViewIndex,:] = neighbor_feature
+        neighbor_feature = np.sum(self.features['{}_{}'.format(
+            scan, nextpano)], axis=0).reshape(1, self.feature_dim)
+        nextstep_features[long_id][absViewIndex, :] = neighbor_feature
 
     print('missed {} panos'.format(missed_pano))
     self.features = nextstep_features
@@ -727,8 +736,9 @@ class BottomUpTopDownFeatures(ImageFeatures):
       for neighbor in neighbors:
         absViewIndex = neighbor['absViewIndex']
         nextpano = neighbor['nextViewpointId']
-        neighbor_feature = np.sum(self.features['{}_{}'.format(scan, nextpano)],axis=0).reshape(1,self.feature_dim)
-        nextstep_features[long_id][absViewIndex,:] = neighbor_feature
+        neighbor_feature = np.sum(self.features['{}_{}'.format(
+            scan, nextpano)], axis=0).reshape(1, self.feature_dim)
+        nextstep_features[long_id][absViewIndex, :] = neighbor_feature
 
     print('missed {} panos'.format(missed_pano))
     self.features = nextstep_features
