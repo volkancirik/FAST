@@ -145,7 +145,9 @@ class Refer360ImageFeatures(object):
                                           'mean_pooled', 'butd', 'prior'],
                                  default=['mean_pooled'])
     argument_parser.add_argument('--refer360_image_feature_model',
-                                 choices=['resnet', 'clip'],
+                                 choices=['resnet',
+                                          'clip',
+                                          'clipRN50x4'],
                                  default='clip')
     argument_parser.add_argument('--refer360_center_model',
                                  choices=['resnet', ''],

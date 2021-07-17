@@ -302,7 +302,7 @@ def spatial_feature_from_bbox(bboxes, im_h, im_w):
   return feats
 
 
-def run(arg_parser, entry_function):
+def run(arg_parser, entry_function, functions=None):
   arg_parser.add_argument('--pdb', action='store_true')
   arg_parser.add_argument('--ipdb', action='store_true')
   arg_parser.add_argument('--no_cuda', action='store_true')
@@ -313,13 +313,13 @@ def run(arg_parser, entry_function):
   args = arg_parser.parse_args()
   args.image_list_file = os.path.join(args.refer360_root, 'imagelist.txt')
   args.butd_filename = os.path.join(
-      'img_features', '{}_{}degrees_obj36.tsv'.format(args.prefix, args.angle_inc))
+      args.img_features_root, '{}_{}degrees_obj36.tsv'.format(args.prefix, args.angle_inc))
   args.refer360_data = os.path.join(args.refer360_root,
                                     'continuous_grounding_{}degrees'.format(args.angle_inc))
   args.cache_root = os.path.join(args.refer360_root,
                                  'cached_data_{}degrees'.format(args.angle_inc))
   args.prior_prefix = os.path.join(
-      'img_features', '{}_{}degrees_'.format(args.prefix, args.angle_inc))
+      args.img_features_root, '{}_{}degrees_'.format(args.prefix, args.angle_inc))
 
   if args.prefix in ['refer360', 'r360tiny', 'touchdown', 'td']:
     args.env = 'refer360'
@@ -362,6 +362,9 @@ def run(arg_parser, entry_function):
       'tasks/{}/experiments/'.format(args.prefix), args.experiment_name, 'plots')
   make_dirs([args.RESULT_DIR, args.SNAPSHOT_DIR, args.PLOT_DIR])
 
+  if entry_function == None:
+    print('will run', args.function)
+    entry_function = functions[args.function]
   if args.ipdb:
     import ipdb
     ipdb.runcall(entry_function, args)

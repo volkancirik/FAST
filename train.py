@@ -591,6 +591,8 @@ def make_arg_parser():
   parser.add_argument('--use_intermediate', action='store_true')
   parser.add_argument('--add_asterix', action='store_true')
 
+  parser.add_argument('--img_features_root', type=str,
+                      default='./img_features')
   parser.add_argument('--refer360_root', type=str,
                       default='refer360_data')
   parser.add_argument('--angle_inc', type=int, default=30)

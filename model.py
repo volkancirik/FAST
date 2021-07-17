@@ -687,7 +687,7 @@ class HallucinationDecoderLSTM1(nn.Module):
                n_objects=360,
                obj_dim=300,
                args=None,
-               bilinear_size=16,
+               bilinear_size=8,
                num_actions=9):
     super(HallucinationDecoderLSTM1, self).__init__()
 
@@ -794,7 +794,7 @@ class HallucinationDecoderLSTM2(nn.Module):
                obj_dim=300,
                args=None,
                load_embeddings=True,
-               bilinear_size=16,
+               bilinear_size=8,
                num_actions=9):
     super(HallucinationDecoderLSTM2, self).__init__()
 
@@ -918,7 +918,7 @@ class HallucinationDecoderLSTM3(nn.Module):
                obj_dim=300,
                args=None,
                load_embeddings=True,
-               bilinear_size=16,
+               bilinear_size=8,
                num_actions=9):
     super(HallucinationDecoderLSTM3, self).__init__()
 
@@ -1044,7 +1044,7 @@ class HallucinationDecoderLSTM4(nn.Module):
                obj_dim=300,
                args=None,
                load_embeddings=True,
-               bilinear_size=16,
+               bilinear_size=8,
                num_actions=9):
     super(HallucinationDecoderLSTM4, self).__init__()
 
@@ -1175,7 +1175,7 @@ class HallucinationDecoderLSTM5(nn.Module):
                obj_dim=300,
                args=None,
                load_embeddings=True,
-               bilinear_size=16,
+               bilinear_size=8,
                num_actions=9):
     super(HallucinationDecoderLSTM5, self).__init__()
 

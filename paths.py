@@ -18,7 +18,8 @@ mean_pooled_feature_store_paths = {
     'resnet': 'img_features/ResNet-152-imagenet.tsv',
     'imagenet': 'img_features/ResNet-152-imagenet.tsv',
     'places365': 'img_features/ResNet-152-places365.tsv',
-    'clip': 'img_features/clip.tsv'
+    'clip': 'img_features/clip.tsv',
+    'clipRN50x4': 'img_features/clip_RN50x4.tsv'
 }
 
 bottom_up_feature_store_path = "img_features/bottom_up_10_100"

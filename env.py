@@ -379,7 +379,7 @@ class ImageFeatures(object):
     argument_parser.add_argument('--image_feature_datasets', nargs='+', choices=['imagenet', 'places365'], default=[
                                  'imagenet'], help='only applicable to mean_pooled or convolutional_attention options for --image_feature_type')
     argument_parser.add_argument('--feature_model',
-                                 choices=['resnet', 'clip'],
+                                 choices=['resnet', 'clip', 'clipRN50x4'],
                                  default='clip')
     argument_parser.add_argument(
         '--bottom_up_detections', type=int, default=20)

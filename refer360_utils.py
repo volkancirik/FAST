@@ -36,9 +36,11 @@ DIR2IDX = {
 }
 
 MODEL2PREFIX = {'resnet': '',
-                'clip': '.clip'}
+                'clip': '.clip',
+                'clipRN50x4': '.clipRN50x4'}
 MODEL2FEATURE_DIM = {'resnet': 2048,
-                     'clip': 512}
+                     'clip': 512,
+                     'clipRN50x4': 640}
 
 
 def build_viewpoint_loc_embedding(viewIndex,

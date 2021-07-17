@@ -23,7 +23,7 @@ EvalResult = namedtuple(
     'EvalResult', 'nav_error, oracle_error, steps, '
     'length, success, oracle_success, spl, '
     'fov_accuracy, acc_40, acc_80, acc_120, distance, '
-    'cls, ndtw')
+    'cls, ndtw, oracle_step')
 METRICS = [
     'acc_40',
     'acc_80',
@@ -36,6 +36,7 @@ METRICS = [
     'ndtw',
     'cls',
     'oracle_success',
+    'oracle_step',
 ]
 
 
@@ -87,12 +88,14 @@ class Refer360Evaluation(object):
   def _get_nearest(self, scan, goal_id, path):
     near_id = path[0][0]
     near_d = self.distances[near_id][goal_id]
-    for item in path:
+    near_s = 0
+    for step, item in enumerate(path):
       d = self.distances[item[0]][goal_id]
       if d < near_d:
         near_id = item[0]
         near_d = d
-    return near_id
+        near_s = step
+    return near_id, near_s
 
   # Metrics implemented here:
   # https://github.com/Sha-Lab/babywalk/blob/master/simulator/envs/env.py
@@ -160,7 +163,7 @@ class Refer360Evaluation(object):
       distance = np.sqrt(((gt['gt_x'] - self.nodes[final_position]['x'])
                           ** 2 + (gt['gt_y'] - self.nodes[final_position]['y'])**2))
 
-    nearest_position = self._get_nearest(gt['scan'], goal, path)
+    nearest_position, nearest_step = self._get_nearest(gt['scan'], goal, path)
     nav_error = self.distances[final_position][goal]
     oracle_error = self.distances[nearest_position][goal]
     trajectory_steps = len(path)-1
@@ -175,6 +178,7 @@ class Refer360Evaluation(object):
     # assert success == True or success == False
     # check for type errors
     oracle_success = oracle_error < self.error_margin
+    oracle_step = nearest_step
     # assert oracle_success == True or oracle_success == False
 
     sp_length = 0
@@ -202,6 +206,7 @@ class Refer360Evaluation(object):
                       distance=distance,
                       cls=cls,
                       ndtw=ndtw,
+                      oracle_step=oracle_step,
                       )
 
   def score_results(self, results,
@@ -259,6 +264,7 @@ class Refer360Evaluation(object):
         self.scores['distance'].append(eval_result.distance)
         self.scores['cls'].append(eval_result.cls)
         self.scores['ndtw'].append(eval_result.ndtw)
+        self.scores['oracle_step'].append(eval_result.oracle_step)
 
         fold = random.randint(0, nfolds-1)
         for metric in self.scores.keys():
@@ -568,5 +574,13 @@ if __name__ == '__main__':
   parser.add_argument('--nfolds',
                       default=1,
                       type=int)
-  utils.run(parser, eval_outfiles)
-  # utils.run(parser, eval_simple_agents)
+  parser.add_argument('--function',
+                      default='eval_outfiles',
+                      choices=['eval_outfiles',
+                               'eval_simple_agents'])
+
+  functions = {
+      'eval_outfiles': eval_outfiles,
+      'eval_simple_agents': eval_simple_agents
+  }
+  utils.run(parser, None, functions=functions)
