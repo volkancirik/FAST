@@ -52,7 +52,6 @@ class Refer360Evaluation(object):
     prefix = args.prefix
     refer360_data = args.refer360_data
 
-    error_margin = args.error_margin
     self.sim = sim
 
     self.splits = splits
@@ -83,7 +82,7 @@ class Refer360Evaluation(object):
 
     self.nodes = self.sim.nodes
     self.distances = self.sim.distances
-    self.error_margin = error_margin*270.0  # error_margin * max FOV distance
+    self.error_margin = self.sim.distances[0][1] * (2**0.5) + 1
 
   def _get_nearest(self, scan, goal_id, path):
     near_id = path[0][0]
