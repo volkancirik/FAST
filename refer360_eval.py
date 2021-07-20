@@ -16,14 +16,14 @@ import utils
 from follower import BaseAgent
 # import train
 
-from collections import namedtuple
+from collections import namedtuple, Counter
 
 
 EvalResult = namedtuple(
     'EvalResult', 'nav_error, oracle_error, steps, '
     'length, success, oracle_success, spl, '
     'fov_accuracy, acc_40, acc_80, acc_120, distance, '
-    'cls, ndtw, oracle_step')
+    'cls, ndtw, oracle_step, max_steps, repetition, nmls, sol')
 METRICS = [
     'acc_40',
     'acc_80',
@@ -37,6 +37,10 @@ METRICS = [
     'cls',
     'oracle_success',
     'oracle_step',
+    'max_steps',
+    'repetition',
+    'nmls',
+    'sol'
 ]
 
 
@@ -51,7 +55,7 @@ class Refer360Evaluation(object):
 
     prefix = args.prefix
     refer360_data = args.refer360_data
-
+    self.max_steps = args.max_episode_len
     self.sim = sim
 
     self.splits = splits
@@ -178,6 +182,7 @@ class Refer360Evaluation(object):
     # check for type errors
     oracle_success = oracle_error < self.error_margin
     oracle_step = nearest_step
+    max_steps = float(trajectory_steps == self.max_steps)
     # assert oracle_success == True or oracle_success == False
 
     sp_length = 0
@@ -192,6 +197,9 @@ class Refer360Evaluation(object):
     cls = self.cls(prediction_path, gt['path'])
     ndtw = self.ndtw(prediction_path, gt['path'])
 
+    repetition = max(Counter(prediction_path[:-1]).values())
+    nmls = success * (1-max_steps)
+    sol = success / repetition
     return EvalResult(nav_error=nav_error, oracle_error=oracle_error,
                       steps=trajectory_steps,
                       length=trajectory_length,
@@ -206,6 +214,10 @@ class Refer360Evaluation(object):
                       cls=cls,
                       ndtw=ndtw,
                       oracle_step=oracle_step,
+                      max_steps=max_steps,
+                      repetition=repetition,
+                      nmls=nmls,
+                      sol=sol
                       )
 
   def score_results(self, results,
@@ -264,6 +276,10 @@ class Refer360Evaluation(object):
         self.scores['cls'].append(eval_result.cls)
         self.scores['ndtw'].append(eval_result.ndtw)
         self.scores['oracle_step'].append(eval_result.oracle_step)
+        self.scores['max_steps'].append(eval_result.max_steps)
+        self.scores['repetition'].append(eval_result.repetition)
+        self.scores['nmls'].append(eval_result.nmls)
+        self.scores['sol'].append(eval_result.sol)
 
         fold = random.randint(0, nfolds-1)
         for metric in self.scores.keys():
