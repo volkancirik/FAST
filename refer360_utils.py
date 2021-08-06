@@ -68,14 +68,59 @@ def build_viewpoint_loc_embedding(viewIndex,
   return embedding
 
 
-def build_visited_embedding(adj_loc_list, visited):
+def build_visited_embedding(adj_loc_list, visited,
+                            visited_type='ones',
+                            visited_pe=None):
   n_emb = 64
   half = int(n_emb/2)
   embedding = np.zeros((len(adj_loc_list), n_emb), np.float32)
   for kk, adj in enumerate(adj_loc_list):
     val = visited[adj['nextViewpointId']]
-    embedding[kk,  0:half] = np.sin(val)
-    embedding[kk, half:] = np.cos(val)
+
+    if visited_type == 'ones':
+      value = float(val > 0)
+    elif visited_type == 'zeros':
+      value = 1 - float(val > 0)
+    elif visited_type == 'count':
+      value = val*1.0
+    elif visited_type == 'pe':
+      value = visited_pe.pe[0,int(val),:]
+    else:
+      raise NotImplementedError()
+    embedding[kk,  :] = value
+
+  return embedding
+
+def build_absolute_location_embedding(adj_loc_list, state_heading, state_elevation):
+  n_emb = 64
+  half = int(n_emb/2)
+  quarter = int(n_emb/4)
+  embedding = np.zeros((len(adj_loc_list), n_emb), np.float32)
+  for kk, adj in enumerate(adj_loc_list):
+    if 'ylat' in adj:
+      heading = adj['xlng']
+      elevation = adj['ylat']
+    else:
+      heading = state_heading
+      elevation = state_elevation
+    embedding[kk,:quarter] = np.sin(heading)
+    embedding[kk,quarter:half] = np.cos(heading)
+    embedding[kk,half:half+quarter] = np.sin(elevation)
+    embedding[kk,half+quarter:] = np.cos(elevation)
+
+  return embedding
+
+def build_stop_embedding(adj_loc_list):
+  n_emb = 64
+  embedding = np.zeros((len(adj_loc_list), n_emb), np.float32)
+  embedding[0,:] = 1.0
+  return embedding
+
+def build_timestep_embedding(adj_loc_list,length,pe):
+  n_emb = 64
+  embedding = np.zeros((len(adj_loc_list), n_emb), np.float32)
+  for kk, adj in enumerate(adj_loc_list):
+    embedding[kk,:] = pe.pe[0,int(length),:]
   return embedding
 
 

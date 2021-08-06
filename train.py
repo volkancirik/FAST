@@ -91,7 +91,7 @@ def get_model_prefix(args, image_feature_list,
                      dump_args=False):
   image_feature_name = '+'.join(
       [featurizer.get_name() for featurizer in image_feature_list])
-  nn = ('{}{}{}{}{}{}{}{}{}'.format(
+  nn = ('{}{}{}{}{}{}{}{}{}{}{}{}'.format(
       ('_bt' if args.bert else ''),
       ('_sc' if args.scorer else ''),
       ('_mh' if args.num_head > 1 else ''),
@@ -100,7 +100,10 @@ def get_model_prefix(args, image_feature_list,
       ('_sa' if args.soft_align else ''),
       ('_bi' if args.bidirectional else ''),
       ('_gl' if args.use_glove else ''),
-      ('_ve' if args.use_visited_embeddings else ''),
+      ('_ve'+args.use_visited_embeddings if args.use_visited_embeddings else ''),
+      ('_ale' if args.use_absolute_location_embeddings else ''),
+      ('_stop' if args.use_stop_embeddings else ''),
+      ('_tse' if args.use_timestep_embeddings else ''),
   ))
   model_prefix = 'follower{}_F{}_IMGF{}_NHe{}_Hid{}_ENL{}_DR{}'.format(
       nn,
@@ -441,6 +444,13 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
     feature_size += 64
   if args.use_oracle_embeddings:
     feature_size += 64
+  if args.use_absolute_location_embeddings:
+    feature_size += 64
+  if args.use_stop_embeddings:
+    feature_size += 64
+  if args.use_timestep_embeddings:
+    feature_size += 64
+
   agent = make_follower(args, vocab,
                         action_embedding_size=feature_size,
                         feature_size=feature_size)
@@ -558,7 +568,13 @@ def make_arg_parser():
   parser.add_argument('--attn_only_verb', action='store_true')
 
   parser.add_argument('--use_gt_actions', action='store_true')
-  parser.add_argument('--use_visited_embeddings', action='store_true')
+  parser.add_argument('--use_absolute_location_embeddings', action='store_true')
+  parser.add_argument('--use_stop_embeddings', action='store_true')
+  parser.add_argument('--use_timestep_embeddings', action='store_true')
+  parser.add_argument('--use_visited_embeddings',
+                      type=str,
+                      choices=['', 'ones', 'zeros', 'count', 'pe'],
+                      default='')
   parser.add_argument('--use_oracle_embeddings', action='store_true')
   parser.add_argument(
       '--use_object_embeddings', action='store_true')
