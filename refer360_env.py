@@ -23,10 +23,13 @@ from refer360_sim import ReadingWorldState, WorldState
 from refer360_utils import DIR2IDX, MODEL2FEATURE_DIM, MODEL2PREFIX
 from refer360_utils import get_object_dictionaries
 from refer360_utils import load_cnn_features, load_vectors, load_butd
+from refer360_utils import build_absolute_location_embedding
 from refer360_utils import build_viewpoint_loc_embedding
 from refer360_utils import build_visited_embedding
 from refer360_utils import build_oracle_embedding
-
+from refer360_utils import build_stop_embedding
+from refer360_utils import build_timestep_embedding
+from model import PositionalEncoding
 file_path = os.path.dirname(__file__)
 module_path = os.path.abspath(os.path.join(file_path))
 sys.path.append(module_path)
@@ -634,6 +637,9 @@ class Refer360Batch(R2RBatch):
     use_gt_actions = args.use_gt_actions
     use_visited_embeddings = args.use_visited_embeddings
     use_oracle_embeddings = args.use_oracle_embeddings
+    use_absolute_location_embeddings = args.use_absolute_location_embeddings
+    use_stop_embeddings = args.use_stop_embeddings
+    use_timestep_embeddings = args.use_timestep_embeddings
     angle_inc = args.angle_inc
 
     self.deaf = args.deaf
@@ -733,10 +739,20 @@ class Refer360Batch(R2RBatch):
       self._action_fn = self._shortest_path_action
       print('will use shortest path actions')
     self.use_visited_embeddings = use_visited_embeddings
+    if self.use_visited_embeddings == 'pe':
+      self.visited_pe = PositionalEncoding(64, 0, max_len=1000)
+    else:
+      self.visited_pe = None
     self.use_oracle_embeddings = use_oracle_embeddings
+    self.use_absolute_location_embeddings = use_absolute_location_embeddings
+    self.use_stop_embeddings = use_stop_embeddings
+    self.use_timestep_embeddings = use_timestep_embeddings
+    if self.use_timestep_embeddings:
+      self.timestep_pe = PositionalEncoding(64, 0, max_len=1000)
 
     self._static_loc_embeddings = [
         build_viewpoint_loc_embedding(viewIndex, angle_inc=self.angle_inc) for viewIndex in range(9)]
+
     if self.blind:
       vle = self._static_loc_embeddings[0]
       self._static_loc_embeddings = [
@@ -843,6 +859,7 @@ class Refer360Batch(R2RBatch):
         feature = [featurizer.get_features(state)
                    for featurizer in self.image_features_list]
         # assert len(feature) == 1, 'for now, only work with MeanPooled feature'
+
         if len(feature) == 1:
           feature_with_loc = np.concatenate(
               (feature[0], self._static_loc_embeddings[state.viewIndex]), axis=-1)
@@ -857,10 +874,18 @@ class Refer360Batch(R2RBatch):
         teacher_action, new_path = self._action_fn(
             state, adj_loc_list, item['gt_actions_path'][-1], item['gt_actions_path'])
 
+        if self.use_absolute_location_embeddings:
+          abs_loc_emb = build_absolute_location_embedding(adj_loc_list,
+                                                          state.heading,
+                                                          state.elevation)
+          action_embedding = np.concatenate(
+              (action_embedding, abs_loc_emb), axis=-1)
         if self.use_visited_embeddings:
           item['visited_viewpoints'][state.viewpointId] += 1.0
           visited_embedding = build_visited_embedding(
-              adj_loc_list, item['visited_viewpoints'])
+              adj_loc_list, item['visited_viewpoints'],
+              visited_type=self.use_visited_embeddings,
+              visited_pe=self.visited_pe)
           action_embedding = np.concatenate(
               (action_embedding, visited_embedding), axis=-1)
         if self.use_oracle_embeddings:
@@ -868,6 +893,16 @@ class Refer360Batch(R2RBatch):
               adj_loc_list, teacher_action)
           action_embedding = np.concatenate(
               (action_embedding, oracle_embedding), axis=-1)
+        if self.use_stop_embeddings:
+          stop_embedding = build_stop_embedding(
+              adj_loc_list)
+          action_embedding = np.concatenate(
+              (action_embedding, stop_embedding), axis=-1)
+        if self.use_timestep_embeddings:
+          timestep_embedding = build_timestep_embedding(
+              adj_loc_list, len(item['path']), self.timestep_pe)
+          action_embedding = np.concatenate(
+              (action_embedding, timestep_embedding), axis=-1)
 
         instructions = '. . .' if self.deaf else item['instructions']
         ob = {
