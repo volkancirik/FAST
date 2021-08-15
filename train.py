@@ -91,7 +91,7 @@ def get_model_prefix(args, image_feature_list,
                      dump_args=False):
   image_feature_name = '+'.join(
       [featurizer.get_name() for featurizer in image_feature_list])
-  nn = ('{}{}{}{}{}{}{}{}{}{}{}{}'.format(
+  nn = ('{}{}{}{}{}{}{}{}{}{}{}{}{}'.format(
       ('_bt' if args.bert else ''),
       ('_sc' if args.scorer else ''),
       ('_mh' if args.num_head > 1 else ''),
@@ -100,6 +100,7 @@ def get_model_prefix(args, image_feature_list,
       ('_sa' if args.soft_align else ''),
       ('_bi' if args.bidirectional else ''),
       ('_gl' if args.use_glove else ''),
+      ('_GT' if args.use_gt_actions else ''),
       ('_ve'+args.use_visited_embeddings if args.use_visited_embeddings else ''),
       ('_ale' if args.use_absolute_location_embeddings else ''),
       ('_stop' if args.use_stop_embeddings else ''),

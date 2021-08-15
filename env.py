@@ -18,6 +18,7 @@ import pdb
 import MatterSim
 import os
 import sys
+import copy
 from refer360_utils import load_vectors
 from refer360_utils import MODEL2PREFIX
 from refer360_utils import MODEL2FEATURE_DIM
@@ -1194,8 +1195,12 @@ class R2RBatch():
             batch, key=lambda item: item['reading_instr_lengths'][0], reverse=True)
 
     new_batch = []
-    for item in batch:
-      item['visited_viewpoints'] = defaultdict(float)
+    for ii,item in enumerate(batch):
+      item['visited_viewpoints_{}'.format(ii)] = defaultdict(float)
+      item['gt_actions_path_{}'.format(ii)] = copy.deepcopy(item['path'])
+      item['timestep_{}'.format(ii)] = 0
+      item['teacher_list_{}'.format(ii)] = []
+      item['prev_visit_{}'.format(ii)] = []
       new_batch.append(item)
     self.batch = new_batch
 
@@ -1320,6 +1325,8 @@ class R2RBatch():
     scanIds = [item['scan'] for item in instance_list]
     viewpointIds = [item['path'][0] for item in instance_list]
     headings = [item['heading'] for item in instance_list]
+
+    gt_actions_paths = [item['gt_actions_path'] for item in instance_list]
 
     return self.env.newEpisodes(scanIds, viewpointIds, headings, beamed=beamed)
 
