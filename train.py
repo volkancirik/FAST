@@ -409,7 +409,8 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
                    image_h=Refer360ImageFeatures.IMAGE_H,
                    fov=Refer360ImageFeatures.VFOV,
                    height=height,
-                   width=width)
+                   width=width,
+                   reading=args.use_reading)
     sim.load_maps()
     env_sim = sim
   else:
@@ -589,6 +590,7 @@ def make_arg_parser():
                       default='tasks/R2R/data/train_glove.en-ALL.npy')
   parser.add_argument('--error_margin', type=float, default=3.0)
   parser.add_argument('--use_intermediate', action='store_true')
+  parser.add_argument('--use_reading', action='store_true')
   parser.add_argument('--add_asterix', action='store_true')
 
   parser.add_argument('--img_features_root', type=str,

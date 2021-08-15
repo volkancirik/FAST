@@ -380,6 +380,7 @@ class Seq2SeqAgent(BaseAgent):
   def _teacher_action(self, obs, ended):
     ''' Extract teacher actions into variable. '''
     a = torch.LongTensor(len(obs))
+
     for i, ob in enumerate(obs):
       # Supervised teacher only moves one axis at a time
       a[i] = ob['teacher'] if not ended[i] else -1
