@@ -28,6 +28,7 @@ from refer360_utils import build_viewpoint_loc_embedding
 from refer360_utils import build_visited_embedding
 from refer360_utils import build_oracle_embedding
 from refer360_utils import build_stop_embedding
+from refer360_utils import build_reading_embedding
 from refer360_utils import build_timestep_embedding
 from model import PositionalEncoding
 file_path = os.path.dirname(__file__)
@@ -634,7 +635,7 @@ class Refer360Batch(R2RBatch):
     cache_root = args.cache_root
     use_intermediate = args.use_intermediate
     use_reading = args.use_reading
-    use_gt_actions = args.use_gt_actions
+    use_gt_actions = use_reading or args.use_gt_actions
     use_visited_embeddings = args.use_visited_embeddings
     use_oracle_embeddings = args.use_oracle_embeddings
     use_absolute_location_embeddings = args.use_absolute_location_embeddings
@@ -903,6 +904,11 @@ class Refer360Batch(R2RBatch):
               adj_loc_list, len(item['path']), self.timestep_pe)
           action_embedding = np.concatenate(
               (action_embedding, timestep_embedding), axis=-1)
+        if self.use_reading:
+          reading_embedding = build_reading_embedding(
+              adj_loc_list)
+          action_embedding = np.concatenate(
+              (action_embedding, reading_embedding), axis=-1)
 
         instructions = '. . .' if self.deaf else item['instructions']
         ob = {
