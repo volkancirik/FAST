@@ -84,12 +84,13 @@ def build_visited_embedding(adj_loc_list, visited,
     elif visited_type == 'count':
       value = val*1.0
     elif visited_type == 'pe':
-      value = visited_pe.pe[0,int(val),:]
+      value = visited_pe.pe[0, int(val), :]
     else:
       raise NotImplementedError()
-    embedding[kk,  :] = value
+    embedding[kk, :] = value
 
   return embedding
+
 
 def build_absolute_location_embedding(adj_loc_list, state_heading, state_elevation):
   n_emb = 64
@@ -103,24 +104,36 @@ def build_absolute_location_embedding(adj_loc_list, state_heading, state_elevati
     else:
       heading = state_heading
       elevation = state_elevation
-    embedding[kk,:quarter] = np.sin(heading)
-    embedding[kk,quarter:half] = np.cos(heading)
-    embedding[kk,half:half+quarter] = np.sin(elevation)
-    embedding[kk,half+quarter:] = np.cos(elevation)
+    embedding[kk, :quarter] = np.sin(heading)
+    embedding[kk, quarter:half] = np.cos(heading)
+    embedding[kk, half:half+quarter] = np.sin(elevation)
+    embedding[kk, half+quarter:] = np.cos(elevation)
 
   return embedding
+
 
 def build_stop_embedding(adj_loc_list):
   n_emb = 64
   embedding = np.zeros((len(adj_loc_list), n_emb), np.float32)
-  embedding[0,:] = 1.0
+  embedding[0, :] = 1.0
   return embedding
 
-def build_timestep_embedding(adj_loc_list,length,pe):
+
+def build_reading_embedding(adj_loc_list):
+  n_emb = 64
+  embedding = np.zeros((len(adj_loc_list), n_emb), np.float32)
+  embedding[0, :int(n_emb/2)] = 1.0
+  embedding[0, int(n_emb/2):] = -1.0
+  embedding[1, :int(n_emb/2)] = -1.0
+  embedding[1, int(n_emb/2):] = 1.0
+  return embedding
+
+
+def build_timestep_embedding(adj_loc_list, length, pe):
   n_emb = 64
   embedding = np.zeros((len(adj_loc_list), n_emb), np.float32)
   for kk, adj in enumerate(adj_loc_list):
-    embedding[kk,:] = pe.pe[0,int(length),:]
+    embedding[kk, :] = pe.pe[0, int(length), :]
   return embedding
 
 
