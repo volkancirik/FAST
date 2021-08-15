@@ -64,7 +64,9 @@ class Refer360Evaluation(object):
     self.scans = []
     self.instructions = {}
     counts = defaultdict(int)
-    refer360_data = load_datasets(splits, root=refer360_data)
+    refer360_data = load_datasets(splits,
+                                  root=refer360_data,
+                                  use_intermediate=args.use_intermediate, use_reading=args.use_reading)
     for item in refer360_data:
       path_id = item['path_id']
       count = counts[path_id]
@@ -197,9 +199,15 @@ class Refer360Evaluation(object):
     cls = self.cls(prediction_path, gt['path'])
     ndtw = self.ndtw(prediction_path, gt['path'])
 
-    repetition = max(Counter(prediction_path[:-1]).values())
+    try:
+      repetition = max(Counter(prediction_path[:-1]).values())
+      sol = success / repetition
+    except:
+      repetition = 0
+      sol = success
+      pass
     nmls = success * (1-max_steps)
-    sol = success / repetition
+
     return EvalResult(nav_error=nav_error, oracle_error=oracle_error,
                       steps=trajectory_steps,
                       length=trajectory_length,
@@ -452,7 +460,8 @@ def eval_simple_agents(args):
                  image_h=Refer360ImageFeatures.IMAGE_H,
                  fov=Refer360ImageFeatures.VFOV,
                  height=height,
-                 width=width)
+                 width=width,
+                 reading=args.use_reading)
 
   sim.load_maps()
 
@@ -506,7 +515,8 @@ def eval_seq2seq(args):
                  image_h=Refer360ImageFeatures.IMAGE_H,
                  fov=Refer360ImageFeatures.VFOV,
                  height=height,
-                 width=width)
+                 width=width,
+                 reading=args.use_reading)
   sim.load_maps()
 
   for outfile in outfiles:
@@ -542,7 +552,8 @@ def eval_outfiles(args):
                  image_h=Refer360ImageFeatures.IMAGE_H,
                  fov=Refer360ImageFeatures.VFOV,
                  height=height,
-                 width=width)
+                 width=width,
+                 reading=args.use_reading)
   sim.load_maps()
 
   for _f in os.listdir(outfolder):

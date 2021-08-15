@@ -302,7 +302,7 @@ def spatial_feature_from_bbox(bboxes, im_h, im_w):
   return feats
 
 
-def run(arg_parser, entry_function, functions=None):
+def get_arguments(arg_parser):
   arg_parser.add_argument('--pdb', action='store_true')
   arg_parser.add_argument('--ipdb', action='store_true')
   arg_parser.add_argument('--no_cuda', action='store_true')
@@ -329,17 +329,16 @@ def run(arg_parser, entry_function, functions=None):
       args.refer360_image_feature_type = ['none']
   else:
     args.env = 'r2r'
+  return args
 
+
+def run(arg_parser, entry_function, functions=None):
+
+  args = get_arguments(arg_parser)
   print('parameters:')
   print(json.dumps(vars(args), indent=2))
 
   args = DotDict(vars(args))
-  # args.RESULT_DIR = os.path.join(
-  #     'tasks/R2R/experiments/', args.experiment_name, 'results')
-  # args.SNAPSHOT_DIR = os.path.join(
-  #     'tasks/R2R/experiments/', args.experiment_name, 'snapshots')
-  # args.PLOT_DIR = os.path.join(
-  #     'tasks/R2R/experiments/', args.experiment_name, 'plots')
 
   args.RESULT_DIR = os.path.join(
       'tasks/{}/experiments/'.format(args.prefix), args.experiment_name, 'results')
@@ -352,15 +351,6 @@ def run(arg_parser, entry_function, functions=None):
 
   import torch.cuda
   torch.cuda.disabled = args.no_cuda
-
-  # Make the folders
-  args.RESULT_DIR = os.path.join(
-      'tasks/{}/experiments/'.format(args.prefix), args.experiment_name, 'results')
-  args.SNAPSHOT_DIR = os.path.join(
-      'tasks/{}/experiments/'.format(args.prefix), args.experiment_name, 'snapshots')
-  args.PLOT_DIR = os.path.join(
-      'tasks/{}/experiments/'.format(args.prefix), args.experiment_name, 'plots')
-  make_dirs([args.RESULT_DIR, args.SNAPSHOT_DIR, args.PLOT_DIR])
 
   if entry_function == None:
     print('will run', args.function)

@@ -1003,6 +1003,7 @@ class EnvBatch():
     world_states = []
     for i, (scanId, viewpointId, heading) in enumerate(zip(scanIds, viewpointIds, headings)):
       world_state = WorldState(scanId, viewpointId, heading, 0)
+
       if beamed:
         world_states.append([world_state])
       else:
@@ -1091,6 +1092,7 @@ class R2RBatch():
           'dataset prefix {} not implemented'.format(prefix))
 
     total_unk, total_found, all_unk = 0, 0, set()
+
     for item in load_datasets(splits, prefix=prefix):
       path_id = item[instr_key]
       count = counts[path_id]
@@ -1184,8 +1186,12 @@ class R2RBatch():
     else:
       self.ix += self.batch_size
     if sort_instr_length:
-      batch = sorted(
-          batch, key=lambda item: item['instr_length'], reverse=True)
+      try:
+        batch = sorted(
+            batch, key=lambda item: item['instr_length'], reverse=True)
+      except:
+        batch = sorted(
+            batch, key=lambda item: item['reading_instr_lengths'][0], reverse=True)
 
     new_batch = []
     for item in batch:
@@ -1326,6 +1332,7 @@ class R2RBatch():
 
   def step(self, world_states, actions, last_obs, beamed=False):
     ''' Take action (same interface as makeActions) '''
+
     return self.env.makeActions(world_states, actions, last_obs, beamed=beamed)
 
   def shortest_paths_to_goals(self, starting_world_states, max_steps):

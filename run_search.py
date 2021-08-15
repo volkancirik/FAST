@@ -15,7 +15,7 @@ from utils import filter_param, colorize
 from utils import NumpyEncoder
 
 from env import ImageFeatures
-from refer360_env import Refer360ImageFeatures
+from refer360_env import Refer360ImageFeatures, make_sim
 import refer360_eval
 
 from model import SimpleCandReranker
@@ -280,15 +280,24 @@ def cache(args, agent, train_env, val_envs):
     cache_env_name = list(val_envs.keys())
     cache_env = [v[0] for v in val_envs.values()]
 
+  if args.prefix in ['refer360', 'r360tiny', 'RxR_en-ALL']:
+    width, height = 4552, 2276
+  elif args.prefix in ['touchdown', 'td']:
+    width, height = 3000, 1500
+
   if args.env == 'r2r':
     Eval = eval.Evaluation
     env_sim = None
   elif args.env == 'refer360':
     Eval = refer360_eval.Refer360Evaluation
     sim = make_sim(args.cache_root,
-                   Refer360ImageFeatures.IMAGE_W,
-                   Refer360ImageFeatures.IMAGE_H,
-                   Refer360ImageFeatures.VFOV)
+                   image_w=Refer360ImageFeatures.IMAGE_W,
+                   image_h=Refer360ImageFeatures.IMAGE_H,
+                   fov=Refer360ImageFeatures.VFOV,
+                   height=height,
+                   width=width,
+                   reading=args.use_reading)
+
     sim.load_maps()
     env_sim = sim
   else:
@@ -304,9 +313,9 @@ def cache(args, agent, train_env, val_envs):
     print('Generating candidates for', env_name)
     agent.cache_search_candidates()
     if not args.no_save:
-      with open('cache_{}{}{}{}.json'.format(env_name, '_debug' if args.debug else '', args.max_episode_len, args.early_stop), 'w') as outfile:
+      with open(args.RESULT_DIR + '/cache_{}{}{}{}.json'.format(env_name, '_debug' if args.debug else '', args.max_episode_len, args.early_stop), 'w') as outfile:
         json.dump(agent.cache_candidates, outfile, cls=NumpyEncoder)
-      with open('search_{}{}{}{}.json'.format(env_name, '_debug' if args.debug else '', args.max_episode_len, args.early_stop), 'w') as outfile:
+      with open(args.RESULT_DIR + '/search_{}{}{}{}.json'.format(env_name, '_debug' if args.debug else '', args.max_episode_len, args.early_stop), 'w') as outfile:
         json.dump(agent.cache_search, outfile, cls=NumpyEncoder)
     score_summary, _, _ = Eval(env.splits,
                                sim=env_sim,
@@ -316,7 +325,6 @@ def cache(args, agent, train_env, val_envs):
 
 def make_arg_parser():
   parser = train.make_arg_parser()
-#  parser.add_argument('--max_episode_len', type=int, default=40)
   parser.add_argument('--gamma', type=float, default=0.21)
   parser.add_argument('--mean', action='store_true')
   parser.add_argument('--logit', action='store_true')

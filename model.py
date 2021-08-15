@@ -1358,9 +1358,9 @@ class SimpleCandReranker(nn.Module):
   def __init__(self, input_dim):
     super(SimpleCandReranker, self).__init__()
     self.net = nn.Sequential(
-        nn.BatchNorm1d(input_dim),
+        #        nn.BatchNorm1d(input_dim),
         nn.Linear(input_dim, input_dim),
-        nn.BatchNorm1d(input_dim),
+        #        nn.BatchNorm1d(input_dim),
         nn.Tanh(),
         nn.Linear(input_dim, 1)
     )
