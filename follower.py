@@ -380,6 +380,7 @@ class Seq2SeqAgent(BaseAgent):
   def _teacher_action(self, obs, ended):
     ''' Extract teacher actions into variable. '''
     a = torch.LongTensor(len(obs))
+
     for i, ob in enumerate(obs):
       # Supervised teacher only moves one axis at a time
       a[i] = ob['teacher'] if not ended[i] else -1
@@ -641,6 +642,46 @@ class Seq2SeqAgent(BaseAgent):
       elif feedback == 'sample':
         m = D.Categorical(logits=_logit)
         a_t = m.sample()
+      elif feedback == 'scheduledsampling':
+        flip = torch.rand(1)
+        self.training_counter += 1
+        prob = 1.0 - self.training_counter*1.0 / self.max_iters
+        if flip <= prob:
+          a_t = torch.clamp(target, min=0)
+        else:
+          m = D.Categorical(logits=_logit)
+          a_t = m.sample()
+      elif feedback[:2] == 'ss' and feedback[-1].isdigit():
+        prob = float('0.'+feedback[2:])
+        flip = torch.rand(1)
+        if flip <= prob:
+          a_t = torch.clamp(target, min=0)
+        else:
+          m = D.Categorical(logits=_logit)
+          a_t = m.sample()
+      elif feedback == 'sss':
+        flip = torch.rand(1)
+        self.training_counter += 1
+        prob = 1.0 - 1 / (1 + np.exp(-0.001*(self.training_counter - self.max_iters/2.0)))
+        if flip <= prob:
+          a_t = torch.clamp(target, min=0)
+        else:
+          m = D.Categorical(logits=_logit)
+          a_t = m.sample()
+      elif feedback == 'sshalf':
+        self.training_counter += 1
+        if self.training_counter <= self.max_iters/2.0:
+          a_t = torch.clamp(target, min=0)
+        else:
+          m = D.Categorical(logits=_logit)
+          a_t = m.sample()
+      elif feedback == 'ssquarter':
+        self.training_counter += 1
+        if self.training_counter <= self.max_iters/4.0:
+          a_t = torch.clamp(target, min=0)
+        else:
+          m = D.Categorical(logits=_logit)
+          a_t = m.sample()
       elif feedback == 'argmax':
         _, a_t = _logit.max(1)        # student forcing - argmax
         a_t = a_t.detach()
@@ -1820,9 +1861,15 @@ class Seq2SeqAgent(BaseAgent):
     self.set_beam_size(beam_size)
     return super(self.__class__, self).test()
 
-  def train(self, optimizers, n_iters, feedback='teacher'):
+  def train(self, optimizers, n_iters,
+            feedback='teacher',
+            training_counter = 0,
+            max_iters = 0):
     ''' Train for a given number of iterations '''
     self.feedback = feedback
+    self.training_counter = training_counter
+    self.max_iters = max_iters
+
     self.encoder.train()
     self.decoder.train()
     self.losses = []
