@@ -66,7 +66,7 @@ class Refer360Evaluation(object):
     counts = defaultdict(int)
     refer360_data = load_datasets(splits,
                                   root=refer360_data,
-                                  use_intermediate=args.use_intermediate, use_reading=args.use_reading)
+                                  use_intermediate=args.use_intermediate, reading=args.use_reading)
     for item in refer360_data:
       path_id = item['path_id']
       count = counts[path_id]
