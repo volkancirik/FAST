@@ -9,6 +9,7 @@ import random
 import os.path
 import base64
 import math
+from pprint import pprint
 from collections import defaultdict
 import numpy as np
 from tqdm import tqdm
@@ -78,7 +79,7 @@ def _get_panorama_states(sim):
       'nextViewpointId': state.viewpointId
   }
   adj_loc_list = [stop] + sorted(
-      adj_dict.values(), key=lambda x: abs(x['rel_heading']))
+      adj_dict.values(), key=lambda x: abs(x['rel_elevation']))
 
   return state, adj_loc_list
 
@@ -639,7 +640,7 @@ class Refer360Batch(R2RBatch):
     self.notTest = ('test' not in splits)
     self.paths = self.env.sims[0][0].paths
     self.distances = self.env.sims[0][0].distances
-    if use_gt_actions:
+    if use_gt_actions and 'train' in splits:
       self._action_fn = self._gt_action
       print('will use ground-truth actions')
     else:
@@ -670,27 +671,37 @@ class Refer360Batch(R2RBatch):
                                   cache_root=cache_root,
                                   args=args)
 
-  def _gt_action(self, state, adj_loc_list, goalViewpointId, gt_path):
+  def _gt_action(self, state, adj_loc_list, goalViewpointId, gt_path,
+                 debug = None):
     '''
     Determine next action on the grount-truth path to goal,
     for supervised training.
     '''
     if len(gt_path) == 1:
       return 0, gt_path
-    assert state.viewpointId == gt_path[0], 'state.viewpointId != gt_path[0] {} != {} {} {} {}'.format(
-        state.viewpointId, gt_path[0], gt_path, adj_loc_list, state)
+    if state.viewpointId != gt_path[0]:
+      print('Error: state.viewpointId != gt_path[0]')
+      pprint(state)
+      pprint(adj_loc_list)
+      pprint(gt_path)
+      pprint(debug)
+      raise Exception('Bug: state.viewpointId != gt_path[0]')
     nextViewpointId = gt_path[1]
+
     for n_a, loc_attr in enumerate(adj_loc_list):
       if loc_attr['nextViewpointId'] == nextViewpointId:
         return n_a, gt_path[1:]
+
     # Next nextViewpointId not found! This should not happen!
-    print('adj_loc_list:', adj_loc_list)
+    pprint(adj_loc_list)
+    pprint(state)
+    pprint(gt_path)
     print('nextViewpointId:', nextViewpointId)
-    long_id = '{}_{}'.format(state.scanId, state.viewpointId)
-    print('longId:', long_id)
+    pprint(debug)
     raise Exception('Bug: nextViewpointId not in adj_loc_list')
 
-  def _shortest_path_action(self, state, adj_loc_list, goalViewpointId, gt_path):
+  def _shortest_path_action(self, state, adj_loc_list, goalViewpointId, gt_path,
+                            debug = None):
     '''
     Determine next action on the shortest path to goal,
     for supervised training.
@@ -759,12 +770,26 @@ class Refer360Batch(R2RBatch):
               'for now, only work with MeanPooled feature or with Rand features')
         action_embedding = _build_action_embedding(adj_loc_list, feature)
 
+
+        instr_ids = []
+        for jj, states_beam in enumerate(self.env.getStates(world_states, beamed=beamed)):
+          temp_item = self.batch[jj]
+          instr_ids.append(temp_item['instr_id'])
+
         teacher_action, new_path = self._action_fn(
-            state, adj_loc_list, item['gt_actions_path'][-1], item['gt_actions_path'])
+          state, adj_loc_list, item['gt_actions_path_{}'.format(i)][-1], item['gt_actions_path_{}'.format(i)],
+          debug = {'path' : item['path'],
+                     'teacher' : item['teacher_list_{}'.format(i)],
+                     'timestep' : item['timestep_{}'.format(i)],
+                     'visited' : item['prev_visit_{}'.format(i)],
+                     'inst_ids' : instr_ids,
+                     'instr_id' : item['instr_id']},
+        )
+
         if self.use_visited_embeddings:
-          item['visited_viewpoints'][state.viewpointId] += 1.0
+          item['visited_viewpoints_{}'.format(i)][state.viewpointId] += 1.0
           visited_embedding = build_visited_embedding(
-              adj_loc_list, item['visited_viewpoints'])
+              adj_loc_list, item['visited_viewpoints_{}'.format(i)])
           action_embedding = np.concatenate(
               (action_embedding, visited_embedding), axis=-1)
         if self.use_oracle_embeddings:
@@ -772,7 +797,6 @@ class Refer360Batch(R2RBatch):
               adj_loc_list, teacher_action)
           action_embedding = np.concatenate(
               (action_embedding, oracle_embedding), axis=-1)
-
         instructions = '. . .' if self.deaf else item['instructions']
         ob = {
             'instr_id': item['instr_id'],
@@ -788,7 +812,10 @@ class Refer360Batch(R2RBatch):
         }
         if include_teacher and self.notTest:
           ob['teacher'] = teacher_action
-          self.batch[i]['gt_actions_path'] = new_path
+          item['teacher_list_{}'.format(i)] += [teacher_action]
+          item['timestep_{}'.format(i)] += 1
+          item['prev_visit_{}'.format(i)] += [state.viewpointId]
+          self.batch[i]['gt_actions_path_{}'.format(i)] = new_path
           ob['deviation'] = self._deviation(state, item['path'])
           ob['progress'] = self._progress(state, item['path']),
           ob['distance'] = self._distance(state, item['path']),
