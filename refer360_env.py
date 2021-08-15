@@ -497,7 +497,7 @@ class Refer360EnvBatch():
       load_world_state(sim, world_state)
       return _get_panorama_states(sim,
                                   reading=reading)
-    return structured_map(f, self.sims_view(beamed), world_states, [reading]*len(world_states),
+    return structured_map(f, self.sims_view(beamed), world_states, [reading] * len(world_states),
                           nested=beamed)
 
   def makeActions(self, world_states, actions, last_obs, beamed=False):
@@ -790,14 +790,23 @@ class Refer360Batch(R2RBatch):
       raise Exception('Bug: state.viewpointId != gt_path[0]')
     nextViewpointId = gt_path[1]
 
-    act_id = -1
     for n_a, loc_attr in enumerate(adj_loc_list):
       if loc_attr['nextViewpointId'] == nextViewpointId:
-        act_id = n_a
-    if act_id >= 0:
-      print('curr, next, path', state.viewpointId, gt_path[1], gt_path)
-      print('n_a -->nextViewpointId', n_a, nextViewpointId)
-      return n_a, gt_path[1:]
+        return n_a, gt_path[1:]
+#     act_id = -1
+#     for n_a, loc_attr in enumerate(adj_loc_list):
+#       if loc_attr['nextViewpointId'] == nextViewpointId:
+
+
+# << << << < HEAD
+#         act_id = n_a
+#     if act_id >= 0:
+#       print('curr, next, path', state.viewpointId, gt_path[1], gt_path)
+#       print('n_a -->nextViewpointId', n_a, nextViewpointId)
+#       return n_a, gt_path[1:]
+# =======
+#         return n_a, gt_path[1:]
+# >>>>>>> 5b9c097ab18136709c99a122b8ea8a04ef56b7d9
 
     # Next nextViewpointId not found! This should not happen!
     pprint(adj_loc_list)
@@ -930,7 +939,8 @@ class Refer360Batch(R2RBatch):
               adj_loc_list, len(item['path']), self.timestep_pe)
           action_embedding = np.concatenate(
               (action_embedding, timestep_embedding), axis=-1)
-        if self.reading:
+
+        if self.env.reading:
           reading_embedding = build_reading_embedding(
               adj_loc_list)
           action_embedding = np.concatenate(
