@@ -319,7 +319,8 @@ class Seq2SeqAgent(BaseAgent):
                max_instruction_length=80,
                attn_only_verb=False,
                clip_rate=100.,
-               max_num_a=-1):
+               max_num_a=-1,
+               reading=False):
     super(self.__class__, self).__init__(env, results_path)
     self.encoder = encoder
     self.decoder = decoder
@@ -339,6 +340,7 @@ class Seq2SeqAgent(BaseAgent):
     self.want_loss = False
     self.clip_rate = clip_rate
     self.max_num_a = max_num_a
+    self.reading = reading
 
   def _feature_variables(self, obs, beamed=False):
     ''' Extract precomputed features into variable. '''
@@ -662,7 +664,8 @@ class Seq2SeqAgent(BaseAgent):
       elif feedback == 'sss':
         flip = torch.rand(1)
         self.training_counter += 1
-        prob = 1.0 - 1 / (1 + np.exp(-0.001*(self.training_counter - self.max_iters/2.0)))
+        prob = 1.0 - 1 / \
+            (1 + np.exp(-0.001*(self.training_counter - self.max_iters/2.0)))
         if flip <= prob:
           a_t = torch.clamp(target, min=0)
         else:
@@ -1863,8 +1866,8 @@ class Seq2SeqAgent(BaseAgent):
 
   def train(self, optimizers, n_iters,
             feedback='teacher',
-            training_counter = 0,
-            max_iters = 0):
+            training_counter=0,
+            max_iters=0):
     ''' Train for a given number of iterations '''
     self.feedback = feedback
     self.training_counter = training_counter
@@ -1877,7 +1880,8 @@ class Seq2SeqAgent(BaseAgent):
     self.dv_losses = []
     self.pm_losses = []
     self.bt_losses = []
-    num_classes = self.env.num_views
+
+    num_classes = self.env.num_views + int(self.reading)
     self.confusion = torch.zeros(num_classes, num_classes).float()
 
     self.timestep2hit = torch.zeros(1, self.episode_len).float()

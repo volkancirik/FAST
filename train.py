@@ -172,8 +172,8 @@ def train(args, train_env, agent, optimizers, n_iters, val_envs=None):
     # Train for log_every interval
     env_name = 'train'
     agent.train(optimizers, interval, feedback=args.feedback_method,
-                training_counter = idx,
-                max_iters = n_iters)
+                training_counter=idx,
+                max_iters=n_iters)
     _loss_str, losses, images = agent.get_loss_info()
     loss_str += env_name + ' ' + _loss_str
     for k, v in losses.items():
@@ -374,7 +374,8 @@ def make_follower(args, vocab,
       max_instruction_length=args.max_input_length,
       attn_only_verb=args.attn_only_verb,
       clip_rate=args.clip_rate,
-      max_num_a=max_num_a)
+      max_num_a=max_num_a,
+      reading=args.use_reading)
   agent.prog_monitor = prog_monitor
   agent.dev_monitor = dev_monitor
   agent.bt_button = bt_button
@@ -453,6 +454,8 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
   if args.use_stop_embeddings:
     feature_size += 64
   if args.use_timestep_embeddings:
+    feature_size += 64
+  if args.use_reading:
     feature_size += 64
 
   agent = make_follower(args, vocab,
@@ -550,7 +553,7 @@ def make_arg_parser():
   parser.add_argument('--load_traj_encoder', type=str, default='')
   parser.add_argument('--feedback_method',
                       choices=['sample', 'teacher', 'sample1step', 'sample2step', 'sample3step', 'teacher+sample', 'recover', 'argmax',
-                               'scheduledsampling','sss','sshalf','ssquarter','ss1','ss5','ss10','ss25'], default='sample')
+                               'scheduledsampling', 'sss', 'sshalf', 'ssquarter', 'ss1', 'ss5', 'ss10', 'ss25'], default='sample')
   parser.add_argument('--debug', action='store_true')
 
   parser.add_argument('--bidirectional', action='store_true')
@@ -573,7 +576,8 @@ def make_arg_parser():
   parser.add_argument('--attn_only_verb', action='store_true')
 
   parser.add_argument('--use_gt_actions', action='store_true')
-  parser.add_argument('--use_absolute_location_embeddings', action='store_true')
+  parser.add_argument('--use_absolute_location_embeddings',
+                      action='store_true')
   parser.add_argument('--use_stop_embeddings', action='store_true')
   parser.add_argument('--use_timestep_embeddings', action='store_true')
   parser.add_argument('--use_visited_embeddings',

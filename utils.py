@@ -329,6 +329,10 @@ def get_arguments(arg_parser):
       args.refer360_image_feature_type = ['none']
   else:
     args.env = 'r2r'
+
+  if args.use_reading:
+    args.feedback_method = 'teacher'
+    args.use_gt_actions = True
   return args
 
 

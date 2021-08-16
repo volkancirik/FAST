@@ -63,7 +63,9 @@ csv.field_size_limit(sys.maxsize)
 angle_inc = np.pi / 6.
 
 
-def _build_action_embedding(adj_loc_list, features):
+def _build_action_embedding(adj_loc_list, features,
+                            reading=False):
+  n_skip = 1 + int(reading)
   feature_dim = 0
   for feature in features:
     feature_dim += feature.shape[-1]
@@ -76,7 +78,7 @@ def _build_action_embedding(adj_loc_list, features):
   embedding[0, 96:] = np.cos(0)
 
   for a, adj_dict in enumerate(adj_loc_list):
-    if a == 0:
+    if a < n_skip:
       # the embedding for the first action ('stop') is left as zero
       continue
 
@@ -252,7 +254,7 @@ def _get_panorama_states(sim):
       'absViewIndex': -1,
       'nextViewpointId': state.location.viewpointId}
   adj_loc_list = [stop] + sorted(
-      adj_dict.values(), key=lambda x: abs(x['rel_heading']))
+      adj_dict.values(), key=lambda x: abs(x['rel_elevation']))
 
   return state, adj_loc_list
 
@@ -1195,7 +1197,7 @@ class R2RBatch():
             batch, key=lambda item: item['reading_instr_lengths'][0], reverse=True)
 
     new_batch = []
-    for ii,item in enumerate(batch):
+    for ii, item in enumerate(batch):
       item['visited_viewpoints_{}'.format(ii)] = defaultdict(float)
       item['gt_actions_path_{}'.format(ii)] = copy.deepcopy(item['path'])
       item['timestep_{}'.format(ii)] = 0

@@ -97,11 +97,15 @@ def _get_panorama_states(sim,
       'absViewIndex': -1,
       'nextViewpointId': state.viewpointId
   }
+  reading_fov = {
+      'absViewIndex': -2,
+      'nextViewpointId': state.viewpointId
+  }
 
   read = []
 
   if reading:
-    read = [stop]
+    read = [reading_fov]
   adj_loc_list = [stop] + read + sorted(
       adj_dict.values(), key=lambda x: abs(x['rel_elevation']))
   return state, adj_loc_list
@@ -633,7 +637,7 @@ class Refer360Batch(R2RBatch):
     refer360_data = args.refer360_data
     cache_root = args.cache_root
     use_intermediate = args.use_intermediate
-    use_gt_actions = args.use_reading or args.use_gt_actions
+    use_gt_actions = args.use_gt_actions
     use_visited_embeddings = args.use_visited_embeddings
     use_oracle_embeddings = args.use_oracle_embeddings
     use_absolute_location_embeddings = args.use_absolute_location_embeddings
@@ -782,7 +786,6 @@ class Refer360Batch(R2RBatch):
     if len(gt_path) == 1:
       return 0, gt_path
     if state.viewpointId != gt_path[0]:
-      print('Error: state.viewpointId != gt_path[0]')
       pprint(state)
       pprint(adj_loc_list)
       pprint(gt_path)
@@ -790,29 +793,18 @@ class Refer360Batch(R2RBatch):
       raise Exception('Bug: state.viewpointId != gt_path[0]')
     nextViewpointId = gt_path[1]
 
+    act_id = -1
     for n_a, loc_attr in enumerate(adj_loc_list):
       if loc_attr['nextViewpointId'] == nextViewpointId:
-        return n_a, gt_path[1:]
-#     act_id = -1
-#     for n_a, loc_attr in enumerate(adj_loc_list):
-#       if loc_attr['nextViewpointId'] == nextViewpointId:
+        act_id = n_a
 
-
-# << << << < HEAD
-#         act_id = n_a
-#     if act_id >= 0:
-#       print('curr, next, path', state.viewpointId, gt_path[1], gt_path)
-#       print('n_a -->nextViewpointId', n_a, nextViewpointId)
-#       return n_a, gt_path[1:]
-# =======
-#         return n_a, gt_path[1:]
-# >>>>>>> 5b9c097ab18136709c99a122b8ea8a04ef56b7d9
+    if act_id >= 0:
+      return act_id, gt_path[1:]
 
     # Next nextViewpointId not found! This should not happen!
-    pprint(adj_loc_list)
     pprint(state)
+    pprint(adj_loc_list)
     pprint(gt_path)
-    print('nextViewpointId:', nextViewpointId)
     pprint(debug)
     raise Exception('Bug: nextViewpointId not in adj_loc_list')
 
