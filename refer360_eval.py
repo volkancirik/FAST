@@ -37,8 +37,8 @@ METRICS = [
     'cls',
     'oracle_success',
     'oracle_step',
-    'max_steps',
     'repetition',
+    'max_steps',
     'nmls',
     'sol'
 ]
@@ -200,10 +200,13 @@ class Refer360Evaluation(object):
     ndtw = self.ndtw(prediction_path, gt['path'])
 
     try:
-      repetition = max(Counter(prediction_path[:-1]).values())
-      sol = success / repetition
+      p = [v for i, v in enumerate(prediction_path)
+           if i == 0 or v != prediction_path[i-1]]
+      repetition_count = max(Counter(p).values())
+      sol = success / repetition_count
+      repetition = float(repetition_count > 1)
     except:
-      repetition = 0
+      repetition = 0.0
       sol = success
       pass
     nmls = success * (1-max_steps)

@@ -691,9 +691,12 @@ class Refer360Batch(R2RBatch):
           if self.reading:
             reading_instr_encodings = []
             reading_instr_lengths = []
-            for sentence in instr:
+
+            accumulate_sentence = ''
+            for sid, sentence in enumerate(instr):
+              accumulate_sentence += sentence
               enc, length, n_unk, n_found, unk = tokenizer.encode_sentence(
-                  sentence, language=language)
+                  accumulate_sentence, language=language)
               reading_instr_encodings.append(enc)
               reading_instr_lengths.append(length)
               total_found += n_found
