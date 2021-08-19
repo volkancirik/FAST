@@ -91,7 +91,7 @@ def get_model_prefix(args, image_feature_list,
                      dump_args=False):
   image_feature_name = '+'.join(
       [featurizer.get_name() for featurizer in image_feature_list])
-  nn = ('{}{}{}{}{}{}{}{}{}{}{}{}{}'.format(
+  nn = ('{}{}{}{}{}{}{}{}{}{}{}{}{}{}'.format(
       ('_bt' if args.bert else ''),
       ('_sc' if args.scorer else ''),
       ('_mh' if args.num_head > 1 else ''),
@@ -99,7 +99,8 @@ def get_model_prefix(args, image_feature_list,
       ('_pm' if args.prog_monitor else ''),
       ('_sa' if args.soft_align else ''),
       ('_bi' if args.bidirectional else ''),
-      ('_gl' if args.use_glove else ''),
+      ('_wv' if args.use_wordvec else ''),
+      ('FT' if args.wordvec_finetune else ''),
       ('_GT' if args.use_gt_actions else ''),
       ('_ve'+args.use_visited_embeddings if args.use_visited_embeddings else ''),
       ('_ale' if args.use_absolute_location_embeddings else ''),
@@ -336,7 +337,7 @@ def make_follower(args, vocab,
 
   enc_hidden_size = int(
       args.hidden_size//2) if args.bidirectional else args.hidden_size
-  glove = np.load(args.glove_path) if args.use_glove else None
+  wordvec = np.load(args.wordvec_path) if args.use_wordvec else None
 
   if args.bert:
     Encoder = BertEncoder
@@ -349,8 +350,10 @@ def make_follower(args, vocab,
   word_embedding_size = get_word_embedding_size(args)
   encoder = try_cuda(Encoder(len(vocab), word_embedding_size, enc_hidden_size, vocab_pad_idx, args.dropout_ratio,
                              bidirectional=args.bidirectional,
-                             glove=glove,
-                             num_layers=args.encoder_num_layers))
+                             num_layers=args.encoder_num_layers,
+                             wordvec=wordvec,
+                             wordvec_finetune=args.wordvec_finetune,
+                             ))
   max_num_a = get_max_num_a(args)
   decoder = try_cuda(Decoder(
       action_embedding_size, args.hidden_size, args.dropout_ratio,
@@ -572,7 +575,7 @@ def make_arg_parser():
   parser.add_argument('--dev_monitor', action='store_true')
   parser.add_argument('--soft_align', action='store_true')
   parser.add_argument('--bt_button', action='store_true')
-  parser.add_argument('--use_glove', action='store_true')
+  parser.add_argument('--use_wordvec', action='store_true')
   parser.add_argument('--attn_only_verb', action='store_true')
 
   parser.add_argument('--use_gt_actions', action='store_true')
@@ -610,8 +613,9 @@ def make_arg_parser():
 
   parser.add_argument('--prefix', type=str, default='R2R')
   parser.add_argument('--language', type=str, default='en-ALL')
-  parser.add_argument('--glove_path', type=str,
-                      default='tasks/R2R/data/train_glove.en-ALL.npy')
+  parser.add_argument('--wordvec_path', type=str,
+                      default='tasks/R2R/data/train_glove')
+  parser.add_argument('--wordvec_finetune', action='store_true')
   parser.add_argument('--error_margin', type=float, default=3.0)
   parser.add_argument('--use_intermediate', action='store_true')
   parser.add_argument('--use_reading', action='store_true')

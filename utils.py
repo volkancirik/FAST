@@ -323,6 +323,8 @@ def get_arguments(arg_parser):
 
   if args.prefix in ['refer360', 'r360tiny', 'touchdown', 'td']:
     args.env = 'refer360'
+    args.language = 'refer360big'
+
     if args.metrics == 'success':
       args.metrics = 'fov_accuracy'
     if args.blind:
@@ -333,6 +335,7 @@ def get_arguments(arg_parser):
   if args.use_reading:
     args.feedback_method = 'teacher'
     args.use_gt_actions = True
+  args.wordvec_path += '.{}.npy'.format(args.language)
   return args
 
 

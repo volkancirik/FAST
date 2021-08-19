@@ -20,6 +20,7 @@ import eval_speaker
 
 from vocab import SUBTRAIN_VOCAB, TRAIN_VOCAB, TRAINVAL_VOCAB
 
+
 def get_model_prefix(args, image_feature_list):
   image_feature_name = "+".join(
       [featurizer.get_name() for featurizer in image_feature_list])
@@ -49,12 +50,12 @@ def train(args, train_env, agent, val_envs=None):
   print('Training with %s feedback' % args.feedback_method)
   encoder_optimizer = optim.Adam(
       filter_param(agent.encoder.parameters()),
-    lr=args.learning_rate,
-    weight_decay=args.weight_decay)
+      lr=args.learning_rate,
+      weight_decay=args.weight_decay)
   decoder_optimizer = optim.Adam(
       filter_param(agent.decoder.parameters()),
-    lr=args.learning_rate,
-    weight_decay=args.weight_decay)
+      lr=args.learning_rate,
+      weight_decay=args.weight_decay)
 
   data_log = defaultdict(list)
   start = time.time()
@@ -158,7 +159,7 @@ def make_speaker(args,
                  action_embedding_size=-1,
                  feature_size=-1):
   enc_hidden_size = args.hidden_size//2 if args.bidirectional else args.hidden_size
-  glove = np.load(args.glove_path)
+  wordvec = np.load(args.wordvec_path)
 
   vocab = read_vocab(TRAIN_VOCAB, args.language)
   encoder = try_cuda(SpeakerEncoderLSTM(
@@ -166,7 +167,8 @@ def make_speaker(args,
       bidirectional=args.bidirectional))
   decoder = try_cuda(SpeakerDecoderLSTM(
       len(vocab), args.word_embedding_size, args.hidden_size, args.dropout_ratio,
-      glove=glove))
+      wordvec=wordvec,
+      wordvec_finetune=args.wordvec_finetune))
   agent = Seq2SeqSpeaker(
       None, "", encoder, decoder, args.max_instruction_length)
   return agent
@@ -204,21 +206,22 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits,
                        args=args)
 
   enc_hidden_size = args.hidden_size//2 if args.bidirectional else args.hidden_size
-  glove = np.load(args.glove_path)
+  wordvec = np.load(args.wordvec_path)
 
   encoder = try_cuda(SpeakerEncoderLSTM(
       action_embedding_size, feature_size, enc_hidden_size, args.dropout_ratio,
       bidirectional=args.bidirectional))
   decoder = try_cuda(SpeakerDecoderLSTM(
       len(vocab), args.word_embedding_size, args.hidden_size, args.dropout_ratio,
-      glove=glove))
+      wordvec=wordvec,
+      wordvec_finetune=args.wordvec_finetune))
 
   test_envs = {}
   for split in test_splits:
     b = EnvBatch(image_features_list,
-                       splits=[split],
-                       tokenizer=tok,
-                       args=args)
+                 splits=[split],
+                 tokenizer=tok,
+                 args=args)
     e = eval_speaker.SpeakerEvaluation(
         [split], instructions_per_path=instructions_per_path,
         args=args)
@@ -308,9 +311,9 @@ def make_arg_parser():
   parser.add_argument("--weight_decay", type=float, default=0.0005)
   parser.add_argument("--dropout_ratio", type=float, default=0.5)
   parser.add_argument("--feedback_method",
-                                 choices=['teacher',
-                                          'sample'],
-                                 default='teacher')
+                      choices=['teacher',
+                               'sample'],
+                      default='teacher')
 
   parser.add_argument("--n_iters", type=int, default=250000)
   parser.add_argument("--log_every", type=int, default=10000)
@@ -321,8 +324,9 @@ def make_arg_parser():
   parser.add_argument("--no_save", action='store_true')
   parser.add_argument("--prefix", type=str, default='R2R')
   parser.add_argument("--language", type=str, default='en-OLD')
-  parser.add_argument('--glove_path', type=str,
+  parser.add_argument('--wordvec_path', type=str,
                       default='tasks/R2R/data/train_glove.en-ALL.npy')
+  parser.add_argument('--wordvec_finetune', action='store_true')
   parser.add_argument("--env", type=str, default='r2r')
   parser.add_argument("--use_intermediate", action='store_true')
   parser.add_argument("--error_margin", type=float, default=3.0)

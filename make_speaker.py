@@ -22,7 +22,7 @@ MAX_INSTRUCTION_LENGTH = 80
 batch_size = 100
 max_episode_len = 10
 word_embedding_size = 300
-#glove_path = 'tasks/R2R/data/train_glove.npy'
+
 #action_embedding_size = 2048+128
 hidden_size = 512
 bidirectional = False
@@ -40,7 +40,7 @@ def make_speaker(args,
                  action_embedding_size=-1,
                  feature_size=-1):
   enc_hidden_size = hidden_size//2 if bidirectional else hidden_size
-  glove = np.load(args.glove_path)
+  wordvec = np.load(args.wordvec_path)
 
   vocab = read_vocab(TRAIN_VOCAB, args.language)
   encoder = try_cuda(SpeakerEncoderLSTM(
@@ -48,7 +48,8 @@ def make_speaker(args,
       bidirectional=bidirectional))
   decoder = try_cuda(SpeakerDecoderLSTM(
       len(vocab), word_embedding_size, hidden_size, dropout_ratio,
-      glove=glove))
+      wordvec=wordvec,
+      wordvec_finetune=args.wordvec_finetune))
   agent = Seq2SeqSpeaker(
       None, "", encoder, decoder, MAX_INSTRUCTION_LENGTH)
   return agent

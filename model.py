@@ -73,7 +73,8 @@ class EncoderLSTM(nn.Module):
       attention methods) and a decoder initial state. '''
 
   def __init__(self, vocab_size, embedding_size, hidden_size, padding_idx,
-               dropout_ratio, bidirectional=False, num_layers=1, glove=None):
+               dropout_ratio, bidirectional=False, num_layers=1,
+               wordvec=None, wordvec_finetune=False):
     super(EncoderLSTM, self).__init__()
     self.embedding_size = embedding_size
     self.hidden_size = hidden_size
@@ -82,13 +83,14 @@ class EncoderLSTM(nn.Module):
     self.num_layers = num_layers
 
     self.embedding = nn.Embedding(vocab_size, embedding_size, padding_idx)
-    self.use_glove = glove is not None
+    self.use_glove = wordvec is not None
     if self.use_glove:
-      print('Using GloVe embedding')
+      print('Using word vectors')
       self.embedding = nn.Embedding(vocab_size, 300, padding_idx)
       self.embedding_size = 300
-      self.embedding.weight.data[...] = torch.from_numpy(glove)
-      self.embedding.weight.requires_grad = False
+      self.embedding.weight.data[...] = torch.from_numpy(wordvec)
+      self.embedding.weight.requires_grad = wordvec_finetune
+
     self.lstm = nn.LSTM(embedding_size, hidden_size, self.num_layers,
                         batch_first=True, dropout=(
                             dropout_ratio if self.num_layers > 1 else 0),
@@ -1434,17 +1436,18 @@ class SpeakerEncoderLSTM(nn.Module):
 
 class SpeakerDecoderLSTM(nn.Module):
   def __init__(self, vocab_size, vocab_embedding_size, hidden_size,
-               dropout_ratio, glove=None, use_input_att_feed=False):
+               dropout_ratio, use_input_att_feed=False,
+               wordvec=None, wordvec_finetune=False):
     super(SpeakerDecoderLSTM, self).__init__()
     self.vocab_size = vocab_size
     self.vocab_embedding_size = vocab_embedding_size
     self.hidden_size = hidden_size
     self.embedding = nn.Embedding(vocab_size, vocab_embedding_size)
-    self.use_glove = glove is not None
+    self.use_glove = wordvec is not None
     if self.use_glove:
-      print('Using GloVe embedding', glove.shape)
-      self.embedding.weight.data[...] = torch.from_numpy(glove)
-      self.embedding.weight.requires_grad = False
+      print('Using word vectors', wordvec.shape)
+      self.embedding.weight.data[...] = torch.from_numpy(wordvec)
+      self.embedding.weight.requires_grad = wordvec_finetune
     self.drop = nn.Dropout(p=dropout_ratio)
     self.use_input_att_feed = use_input_att_feed
     if self.use_input_att_feed:
@@ -1499,7 +1502,7 @@ class SpeakerDecoderLSTM(nn.Module):
 ###############################################################################
 class BertEncoder(nn.Module):
   def __init__(self, vocab_size, embedding_size, hidden_size, padding_idx,
-               dropout_ratio, bidirectional=False, num_layers=1, glove=None):
+               dropout_ratio, bidirectional=False, num_layers=1, wordvec=None):
     super(BertEncoder, self).__init__()
 
     self.hidden_size = 768
