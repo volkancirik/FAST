@@ -609,9 +609,8 @@ def make_arg_parser():
   parser.add_argument('--load_traj_encoder', type=str, default='')
   parser.add_argument('--feedback_method',
                       choices=['sample', 'teacher', 'sample1step', 'sample2step', 'sample3step', 'teacher+sample', 'recover', 'argmax',
-                               'scheduledsampling', 'sss', 'sshalf', 'ssquarter', 'ss1', 'ss5', 'ss10', 'ss25'], default='sample')
+                               'scheduledsampling', 'sss', 'sshalf', 'ssquarter', 'ss01', 'ss05', 'ss10', 'ss15','ss20','ss25','ss50'], default='sample')
   parser.add_argument('--debug', action='store_true')
-
   parser.add_argument('--bidirectional', action='store_true')
   parser.add_argument('--hidden_size', type=int, default=256)
   parser.add_argument('--encoder_num_layers', type=int, default=2)
