@@ -12,8 +12,9 @@ import pandas as pd
 from collections import defaultdict
 import argparse
 import shutil
-
+from tqdm import tqdm
 import utils
+
 from utils import read_vocab, Tokenizer, vocab_pad_idx, timeSince, try_cuda
 from utils import colorize, filter_param
 from utils import get_confusion_matrix_image, get_bar_image
@@ -298,10 +299,14 @@ def make_more_train_env(args, train_vocab_path, train_splits):
   image_features_list = ImgFeatures.from_args(args)
   vocab = read_vocab(train_vocab_path, args.language)
   tok = Tokenizer(vocab=vocab)
+  sim_cache = None
+  if args.use_raw:
+    sim_cache = cache_sim(args)
 
   train_env = EnvBatch(image_features_list,
                        splits=train_splits,
                        tokenizer=tok,
+                       sim_cache=sim_cache,
                        args=args)
   return train_env
 
@@ -398,6 +403,49 @@ def make_follower(args, vocab,
   return agent
 
 
+def cache_sim(args):
+
+  sim_cache = {}
+  if args.env == 'r2r':
+
+    scans_root = './data/v1/scans/'
+    pbar = tqdm(os.listdir(scans_root))
+
+    sim_cache = {}
+    for scan in pbar:
+      sim_cache_file = os.path.join(scans_root, scan, 'sim_cache.npy')
+      if not os.path.exists(sim_cache_file):
+        print('{} does not exist! generate cache file!', sim_cache_file)
+        quit(0)
+      sc = np.load(sim_cache_file, allow_pickle=True)[()]
+      sim_cache[scan] = sc
+  else:
+    image_list = [line.strip()
+                  for line in open(args.image_list_file)]
+
+    if args.prefix in ['refer360', 'r360tiny']:
+      width, height = 4552, 2276
+    elif args.prefix in ['touchdown', 'td']:
+      width, height = 3000, 1500
+
+    pbar = tqdm(image_list)
+    for fname in pbar:
+      pano = fname.split('/')[-1].split('.')[0]
+      sim = make_sim(args.cache_root,
+                     image_w=Refer360ImageFeatures.IMAGE_W,
+                     image_h=Refer360ImageFeatures.IMAGE_H,
+                     fov=Refer360ImageFeatures.VFOV,
+                     height=height,
+                     width=width,
+                     reading=args.use_reading,
+                     raw=args.use_raw)
+      sim.set_pano(pano)
+      sim.load_fovs()
+      sim.look_fov(0)
+      sim_cache[pano] = sim
+  return sim_cache
+
+
 def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
   setup(args.seed)
   if args.prefix in ['refer360', 'r360tiny', 'RxR_en-ALL']:
@@ -431,15 +479,20 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
 
   vocab = read_vocab(train_vocab_path, args.language)
   tok = Tokenizer(vocab=vocab)
+  sim_cache = None
+  if args.use_raw:
+    sim_cache = cache_sim(args)
 
   train_env = EnvBatch(image_features_list,
                        splits=train_splits,
                        tokenizer=tok,
+                       sim_cache=sim_cache,
                        args=args) if len(train_splits) > 0 else None
   test_envs = {
       split: (EnvBatch(image_features_list,
                        splits=[split],
                        tokenizer=tok,
+                       sim_cache=sim_cache,
                        args=args),
               Eval([split],
                    sim=env_sim,
@@ -619,6 +672,7 @@ def make_arg_parser():
   parser.add_argument('--error_margin', type=float, default=3.0)
   parser.add_argument('--use_intermediate', action='store_true')
   parser.add_argument('--use_reading', action='store_true')
+  parser.add_argument('--use_raw', action='store_true')
   parser.add_argument('--add_asterix', action='store_true')
 
   parser.add_argument('--img_features_root', type=str,

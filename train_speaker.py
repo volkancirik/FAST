@@ -17,7 +17,7 @@ from refer360_env import Refer360Batch, Refer360ImageFeatures
 from model import SpeakerEncoderLSTM, SpeakerDecoderLSTM
 from speaker import Seq2SeqSpeaker
 import eval_speaker
-
+from train import get_word_embedding_size
 from vocab import SUBTRAIN_VOCAB, TRAIN_VOCAB, TRAINVAL_VOCAB
 
 
@@ -162,15 +162,16 @@ def make_speaker(args,
   wordvec = np.load(args.wordvec_path)
 
   vocab = read_vocab(TRAIN_VOCAB, args.language)
+  word_embedding_size = get_word_embedding_size(args)
   encoder = try_cuda(SpeakerEncoderLSTM(
       action_embedding_size, feature_size, enc_hidden_size, args.dropout_ratio,
       bidirectional=args.bidirectional))
   decoder = try_cuda(SpeakerDecoderLSTM(
-      len(vocab), args.word_embedding_size, args.hidden_size, args.dropout_ratio,
+      len(vocab), word_embedding_size, args.hidden_size, args.dropout_ratio,
       wordvec=wordvec,
       wordvec_finetune=args.wordvec_finetune))
   agent = Seq2SeqSpeaker(
-      None, "", encoder, decoder, args.max_instruction_length)
+      None, "", encoder, decoder, args.max_input_length)
   return agent
 
 
@@ -208,11 +209,23 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits,
   enc_hidden_size = args.hidden_size//2 if args.bidirectional else args.hidden_size
   wordvec = np.load(args.wordvec_path)
 
+  word_embedding_size = get_word_embedding_size(args)
+  enc_hidden_size = 600  # refer360 >>>
+  enc_hidden_size = 512  # refer360 >>>
+  # enc_hidden_size = 512  # r2r >>>
+
   encoder = try_cuda(SpeakerEncoderLSTM(
       action_embedding_size, feature_size, enc_hidden_size, args.dropout_ratio,
       bidirectional=args.bidirectional))
+  word_embedding_size = 300  # refer360 >>>>
+  word_embedding_size = 300  # r2r >>>>
+  hidden_size = 600  # refer360 >>>
+  hidden_size = 512  # refer360 >>>
+  # hidden_size = 512  # >>> r2r
+  #hidden_size = args.hidden_size
+
   decoder = try_cuda(SpeakerDecoderLSTM(
-      len(vocab), args.word_embedding_size, args.hidden_size, args.dropout_ratio,
+      len(vocab), word_embedding_size, hidden_size, args.dropout_ratio,
       wordvec=wordvec,
       wordvec_finetune=args.wordvec_finetune))
 
@@ -257,7 +270,7 @@ def train_setup(args):
       args, vocab, train_splits, val_splits,
       instructions_per_path=instructions_per_path)
   agent = Seq2SeqSpeaker(
-      train_env, "", encoder, decoder, args.max_instruction_length)
+      train_env, "", encoder, decoder, instruction_len=args.max_input_length)
   return agent, train_env, val_envs
 
 
@@ -306,7 +319,8 @@ def make_arg_parser():
 
   parser.add_argument("--bidirectional", action='store_true')
   parser.add_argument("--word_embedding_size", type=int, default=300)
-  parser.add_argument("--hidden_size", type=int, default=512)
+  #parser.add_argument("--hidden_size", type=int, default=512)
+  parser.add_argument("--hidden_size", type=int, default=256)
   parser.add_argument("--learning_rate", type=float, default=0.0001)
   parser.add_argument("--weight_decay", type=float, default=0.0005)
   parser.add_argument("--dropout_ratio", type=float, default=0.5)
@@ -315,36 +329,63 @@ def make_arg_parser():
                                'sample'],
                       default='teacher')
 
-  parser.add_argument("--n_iters", type=int, default=250000)
-  parser.add_argument("--log_every", type=int, default=10000)
-  parser.add_argument("--save_every", type=int, default=10000)
-  parser.add_argument("--max_instruction_length", type=int, default=80)
+  parser.add_argument("--n_iters", type=int, default=100000)
+  parser.add_argument("--log_every", type=int, default=5000)
+  parser.add_argument("--save_every", type=int, default=5000)
+  parser.add_argument("--max_input_length", type=int, default=80)
   parser.add_argument("--seed", type=int, default=10)
   parser.add_argument("--beam_size", type=int, default=1)
   parser.add_argument("--no_save", action='store_true')
+
   parser.add_argument("--prefix", type=str, default='R2R')
-  parser.add_argument("--language", type=str, default='en-OLD')
+  parser.add_argument("--language", type=str, default='en-ALL')
   parser.add_argument('--wordvec_path', type=str,
-                      default='tasks/R2R/data/train_glove.en-ALL.npy')
+                      default='tasks/R2R/data/train_glove')
   parser.add_argument('--wordvec_finetune', action='store_true')
-  parser.add_argument("--env", type=str, default='r2r')
-  parser.add_argument("--use_intermediate", action='store_true')
   parser.add_argument("--error_margin", type=float, default=3.0)
+  parser.add_argument("--use_intermediate", action='store_true')
+  parser.add_argument('--use_reading', action='store_true')
+  parser.add_argument('--use_raw', action='store_true')
+  parser.add_argument("--add_asterix", action='store_true')
+
+  #parser.add_argument("--env", type=str, default='r2r')
+
+  parser.add_argument('--img_features_root', type=str,
+                      default='./img_features')
   parser.add_argument('--cache_root', type=str,
                       default='/projects/vcirik/refer360/data/cached_data_15degrees/')
-  parser.add_argument("--angle_inc", type=float, default=15.)
   parser.add_argument('--image_list_file', type=str,
                       default='/projects/vcirik/refer360/data/imagelist.txt')
   parser.add_argument('--refer360_root', type=str,
                       default='/projects/vcirik/refer360/data/continuous_grounding')
-  parser.add_argument("--add_asterix", action='store_true')
-  parser.add_argument("--use_gt_actions", action='store_true')
-  parser.add_argument("--use_visited_embeddings", action='store_true')
-  parser.add_argument("--use_oracle_embeddings", action='store_true')
-  parser.add_argument("--verbose", action='store_true')
+  parser.add_argument("--angle_inc", type=int, default=30)
 
+  parser.add_argument('--use_gt_actions', action='store_true')
+  parser.add_argument('--use_absolute_location_embeddings',
+                      action='store_true')
+  parser.add_argument('--use_stop_embeddings', action='store_true')
+  parser.add_argument('--use_timestep_embeddings', action='store_true')
+  parser.add_argument('--use_visited_embeddings',
+                      type=str,
+                      choices=['', 'ones', 'zeros', 'count', 'pe'],
+                      default='')
+  parser.add_argument('--use_oracle_embeddings', action='store_true')
+  parser.add_argument(
+      '--use_object_embeddings', action='store_true')
+
+  parser.add_argument('--metrics', type=str,
+                      default='success',
+                      help='Success metric, default=success')
+  parser.add_argument('--deaf', action='store_true')
+  parser.add_argument('--blind', action='store_true')
+  parser.add_argument('--no_lookahead', action='store_true')
+  parser.add_argument('--nextstep', action='store_true')
+
+  parser.add_argument("--verbose", action='store_true')
   return parser
 
 
 if __name__ == "__main__":
-  utils.run(make_arg_parser(), train_val)
+  #utils.run(make_arg_parser(), train_val)
+  from train import make_arg_parser as m_a_p
+  utils.run(m_a_p(), train_val)
