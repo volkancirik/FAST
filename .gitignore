@@ -2,3 +2,5 @@ data/*
 __pycache__/*
 snapshots/*
 *.pyc
+experiments/*
+eval_outputs/*
