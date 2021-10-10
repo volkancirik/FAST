@@ -464,7 +464,8 @@ def eval_simple_agents(args):
                  fov=Refer360ImageFeatures.VFOV,
                  height=height,
                  width=width,
-                 reading=args.use_reading)
+                 reading=args.use_reading,
+                 raw=args.use_raw)
 
   sim.load_maps()
 
@@ -519,7 +520,8 @@ def eval_seq2seq(args):
                  fov=Refer360ImageFeatures.VFOV,
                  height=height,
                  width=width,
-                 reading=args.use_reading)
+                 reading=args.use_reading,
+                 raw=args.use_raw)
   sim.load_maps()
 
   for outfile in outfiles:
@@ -556,7 +558,8 @@ def eval_outfiles(args):
                  fov=Refer360ImageFeatures.VFOV,
                  height=height,
                  width=width,
-                 reading=args.use_reading)
+                 reading=args.use_reading,
+                 raw=args.use_raw)
   sim.load_maps()
 
   for _f in os.listdir(outfolder):

@@ -21,6 +21,7 @@ class SpeakerEvaluation(object):
                args=None):
 
     prefix = args.prefix
+    refer360_data = args.refer360_data
     refer360_root = args.refer360_root
 
     self.splits = splits
@@ -33,7 +34,12 @@ class SpeakerEvaluation(object):
     self.instructions = {}
     if prefix == 'refer360':
       counts = defaultdict(int)
-      refer360_data = load_refer360_datasets(splits, root=refer360_root)
+
+      refer360_data = load_refer360_datasets(splits,
+                                             root=refer360_data,
+                                             use_intermediate=args.use_intermediate,
+                                             reading=args.use_reading)
+
       for item in refer360_data:
         path_id = item['path_id']
         count = counts[path_id]

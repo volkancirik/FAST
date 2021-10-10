@@ -384,17 +384,20 @@ def eval_seq2seq():
       print('\n%s' % outfile)
       pp.pprint(score_summary)
 
-METRICS= ['success',
-          'steps',
-          'spl',
-          'ndtw',
-          'cls',
-          'oracle_rate',
-          'nav_error'
-]
+
+METRICS = ['success',
+           'steps',
+           'spl',
+           'ndtw',
+           'cls',
+           'oracle_rate',
+           'nav_error'
+           ]
+
+
 def eval_outfiles(args):
   outfolder = args.results_path
-  splits = ['val_unseen'] #['val_seen', 'val_unseen']
+  splits = ['val_unseen']  # ['val_seen', 'val_unseen']
   for _f in os.listdir(outfolder):
     outfile = os.path.join(outfolder, _f)
     _splits = []
