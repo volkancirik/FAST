@@ -15,7 +15,7 @@ args = DotDict({
     'image_feature_type': ["mean_pooled"],
     'image_feature_datasets': ["imagenet"],
     'bidirectional': False,
-    'use_glove': False,
+    'use_wordvec': False,
     'bert': False,
     'coground': True,
     'num_head': 1,
