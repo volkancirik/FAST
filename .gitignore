@@ -4,3 +4,6 @@ snapshots/*
 *.pyc
 experiments/*
 eval_outputs/*
+.ipynb_checkpoints/*
+*.ipynb
+panoramic_camera_cached.py
