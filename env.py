@@ -34,6 +34,28 @@ sys.path.append(module_path)
 
 csv.field_size_limit(sys.maxsize)
 
+
+class CachedMatterSim(MatterSim.Simulator):
+  def __init__(self,
+               raw=False,
+               sim_cache=None):
+    super(CachedMatterSim, self).__init__()
+    self.raw = raw
+    self.sim_cache = sim_cache
+    self.img = None
+
+  def cachedNewEpisode(self, scanId, viewpointId, heading, elevation, img):
+    if self.raw:
+      idx = self.sim_cache['viewpoint2idx'][viewpointId]
+      self.img = self.sim_cache['panos'][idx, :, :, :]
+    else:
+      self.img = None
+    return self.newEpisode(scanId, viewpointId, heading, elevation)
+
+  def cachedGetState(self):
+    state = self.getState()
+    state.img = self.img
+
 # Not needed for panorama action space
 # FOLLOWER_MODEL_ACTIONS = ['left', 'right', 'up', 'down', 'forward', '<end>', '<start>', '<ignore>']
 #
@@ -89,6 +111,7 @@ def _build_action_embedding(adj_loc_list, features,
       fd += fd_new
     # embedding[a, :feature_dim] = features[adj_dict['absViewIndex']]
     loc_embedding = embedding[a, feature_dim:]
+
     rel_heading = adj_dict['rel_heading']
     rel_elevation = adj_dict['rel_elevation']
     loc_embedding[0:32] = np.sin(rel_heading)
@@ -160,6 +183,7 @@ def _adjust_elevation(sim, elevation):
 
 def _navigate_to_location(sim, nextViewpointId, absViewIndex):
   state = sim.getState()
+
   if state.location.viewpointId == nextViewpointId:
     return  # do nothing
 
@@ -260,14 +284,14 @@ def _get_panorama_states(sim):
 
 
 WorldState = namedtuple(
-    'WorldState', ['scanId', 'viewpointId', 'heading', 'elevation'])
+    'WorldState', ['scanId', 'viewpointId', 'heading', 'elevation', 'img'])
 
 BottomUpViewpoint = namedtuple('BottomUpViewpoint', [
                                'cls_prob', 'image_features', 'attribute_indices', 'object_indices', 'spatial_features', 'no_object_mask'])
 
 
 def load_world_state(sim, world_state):
-  sim.newEpisode(*world_state)
+  sim.cachedNewEpisode(*world_state)
 
 
 def get_world_state(sim):
@@ -275,11 +299,12 @@ def get_world_state(sim):
   return WorldState(scanId=state.scanId,
                     viewpointId=state.location.viewpointId,
                     heading=state.heading,
-                    elevation=state.elevation)
+                    elevation=state.elevation,
+                    img=None)
 
 
-def make_sim(image_w, image_h, vfov):
-  sim = MatterSim.Simulator()
+def make_sim(image_w, image_h, vfov, raw=False):
+  sim = CachedMatterSim(raw=raw)
   sim.setRenderingEnabled(False)
   sim.setDiscretizedViewingAngles(True)
   sim.setCameraResolution(image_w, image_h)
@@ -483,12 +508,13 @@ class MeanPooledImageFeatures(ImageFeatures):
     print('Loading the sim for nextstep features')
     sim = make_sim(ImageFeatures.IMAGE_W,
                    ImageFeatures.IMAGE_H,
-                   ImageFeatures.VFOV)
+                   ImageFeatures.VFOV,
+                   raw=self.raw)
     for long_id in self.features:
       scan = long_id.split('_')[0]
       pano = long_id.split('_')[1]
-      world_state = WorldState(scan, pano, 0, 0)
-      sim.newEpisode(*world_state)
+      world_state = WorldState(scan, pano, 0, 0, None)
+      sim.cachedNewEpisode(*world_state)
       _, neighbors = _get_panorama_states(sim)
       nextstep_features[long_id] = self.features[long_id]
       for neighbor in neighbors:
@@ -603,12 +629,13 @@ class ReverieFeatures(ImageFeatures):
     print('Loading the sim for nextstep features')
     sim = make_sim(ImageFeatures.IMAGE_W,
                    ImageFeatures.IMAGE_H,
-                   ImageFeatures.VFOV)
+                   ImageFeatures.VFOV,
+                   raw=self.raw)
     for long_id in self.features:
       scan = long_id.split('_')[0]
       pano = long_id.split('_')[1]
-      world_state = WorldState(scan, pano, 0, 0)
-      sim.newEpisode(*world_state)
+      world_state = WorldState(scan, pano, 0, 0, None)
+      sim.cachedNewEpisode(*world_state)
       _, neighbors = _get_panorama_states(sim)
       nextstep_features[long_id] = self.features[long_id]
       for neighbor in neighbors:
@@ -728,12 +755,13 @@ class BottomUpTopDownFeatures(ImageFeatures):
     print('Loading the sim for nextstep features')
     sim = make_sim(ImageFeatures.IMAGE_W,
                    ImageFeatures.IMAGE_H,
-                   ImageFeatures.VFOV)
+                   ImageFeatures.VFOV,
+                   raw=self.raw)
     for long_id in self.features:
       scan = long_id.split('_')[0]
       pano = long_id.split('_')[1]
-      world_state = WorldState(scan, pano, 0, 0)
-      sim.newEpisode(*world_state)
+      world_state = WorldState(scan, pano, 0, 0, None)
+      sim.cachedNewEpisode(*world_state)
       _, neighbors = _get_panorama_states(sim)
       nextstep_features[long_id] = self.features[long_id]
       for neighbor in neighbors:
@@ -981,15 +1009,23 @@ class EnvBatch():
   ''' A simple wrapper for a batch of MatterSim environments,
       using discretized viewpoints and pretrained features '''
 
-  def __init__(self, batch_size, beam_size):
+  def __init__(self, batch_size, beam_size,
+               sim_cache=None):
     self.sims = []
     self.batch_size = batch_size
     self.beam_size = beam_size
+    self.sim_cache = sim_cache
+    self.raw = False
+    if self.sim_cache:
+      self.raw = True
+
     for i in range(batch_size):
       beam = []
       for j in range(beam_size):
         sim = make_sim(ImageFeatures.IMAGE_W,
-                       ImageFeatures.IMAGE_H, ImageFeatures.VFOV)
+                       ImageFeatures.IMAGE_H,
+                       ImageFeatures.VFOV,
+                       raw=self.raw)
         beam.append(sim)
       self.sims.append(beam)
 
@@ -999,18 +1035,24 @@ class EnvBatch():
     else:
       return (s[0] for s in self.sims)
 
-  def newEpisodes(self, scanIds, viewpointIds, headings, beamed=False):
+  def newEpisodes(self, scanIds, viewpointIds, headings, imgs, beamed=False):
     assert len(scanIds) == len(viewpointIds)
     assert len(headings) == len(viewpointIds)
     assert len(scanIds) == len(self.sims)
+    assert len(imgs) == len(viewpointIds)
     world_states = []
-    for i, (scanId, viewpointId, heading) in enumerate(zip(scanIds, viewpointIds, headings)):
-      world_state = WorldState(scanId, viewpointId, heading, 0)
+
+    scan2cache = {}
+    for i, (scanId, viewpointId, heading, img) in enumerate(zip(scanIds, viewpointIds, headings, imgs)):
+      world_state = WorldState(scanId, viewpointId, heading, 0, img)
 
       if beamed:
         world_states.append([world_state])
       else:
         world_states.append(world_state)
+      if self.sim_cache:
+        sc = self.sim_cache[scanId]
+        self.sims[i][0].sim_cache = sc
       load_world_state(self.sims[i][0], world_state)
     assert len(world_states) == len(scanIds)
     return world_states
@@ -1068,6 +1110,7 @@ class R2RBatch():
                splits=['train'],
                tokenizer=None,
                instruction_limit=None,
+               sim_cache=None,
                args=None):
     batch_size = args.batch_size
     seed = args.seed
@@ -1083,6 +1126,7 @@ class R2RBatch():
     self.scans = []
     self.gt = {}
     self.tokenizer = tokenizer
+    self.sim_cache = sim_cache
 
     counts = defaultdict(int)
 
@@ -1100,6 +1144,12 @@ class R2RBatch():
       path_id = item[instr_key]
       count = counts[path_id]
       counts[path_id] += 1
+
+      item['img'] = './data/v1/scans/{}/panos/{}.jpg'.format(item['scan'],
+                                                             item['path'][0])
+      if not os.path.exists(item['img']):
+        print('Pano does not exist:', item['img'])
+        quit(0)
       if add_asterix:
         new_path_id = '{}*{}'.format(path_id, count)
         item[instr_key] = new_path_id
@@ -1156,7 +1206,8 @@ class R2RBatch():
       invalid = True
     if force_reload or invalid:
       self.beam_size = beam_size
-      self.env = EnvBatch(self.batch_size, beam_size)
+      self.env = EnvBatch(self.batch_size, beam_size,
+                          sim_cache=self.sim_cache)
 
   def _load_nav_graphs(self):
     ''' Load connectivity graph for each scan, useful for reasoning about shortest paths '''
@@ -1257,8 +1308,12 @@ class R2RBatch():
     path_len = len(path) - 1
     return 1.0 - float(path_len) / shortest_path_len
 
-  def observe(self, world_states, beamed=False, include_teacher=True, instr_id=None):
-    # start_time = time.time()
+  def observe(self, world_states,
+              beamed=False,
+              include_teacher=True,
+              instr_id=None,
+              debug=False):
+
     obs = []
     for i, states_beam in enumerate(self.env.getStates(world_states, beamed=beamed)):
       item = self.batch[i]
@@ -1318,19 +1373,20 @@ class R2RBatch():
       else:
         assert len(obs_batch) == 1
         obs.append(obs_batch[0])
-
-    # end_time = time.time()
-    # print('get obs in {} seconds'.format(end_time - start_time))
+      if debug:
+        pdb.set_trace()
     return obs
 
-  def get_starting_world_states(self, instance_list, beamed=False):
+  def get_starting_world_states(self, instance_list,
+                                beamed=False):
+
     scanIds = [item['scan'] for item in instance_list]
     viewpointIds = [item['path'][0] for item in instance_list]
     headings = [item['heading'] for item in instance_list]
+    imgs = [item['img'] for item in instance_list]
 
-    gt_actions_paths = [item['gt_actions_path'] for item in instance_list]
-
-    return self.env.newEpisodes(scanIds, viewpointIds, headings, beamed=beamed)
+    #gt_actions_paths = [item['gt_actions_path'] for item in instance_list]
+    return self.env.newEpisodes(scanIds, viewpointIds, headings, imgs, beamed=beamed)
 
   def reset(self, sort=False, beamed=False, load_next_minibatch=True):
     ''' Load a new minibatch / episodes. '''

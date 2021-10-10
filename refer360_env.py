@@ -53,12 +53,14 @@ def get_world_state(sim,
                              heading=state.heading,
                              elevation=state.elevation,
                              viewIndex=state.viewIndex,
+                             img=state.img,
                              sentId=state.sentId)
   return WorldState(scanId=state.scanId,
                     viewpointId=state.viewpointId,
                     heading=state.heading,
                     elevation=state.elevation,
-                    viewIndex=state.viewIndex)
+                    viewIndex=state.viewIndex,
+                    img=state.img)
 
 
 def _navigate_to_location(sim, nextViewpointId,
@@ -78,6 +80,7 @@ def _get_panorama_states(sim,
   '''
   Look around and collect all the navigable locations
   '''
+
   state = sim.getState()
   adj_list = sim.get_neighbors()
 
@@ -104,7 +107,7 @@ def _get_panorama_states(sim,
 
   read = []
 
-  if reading:
+  if (type(reading) == bool and reading) or (type(reading) == list and reading[0]):
     read = [reading_fov]
   adj_loc_list = [stop] + read + sorted(
       adj_dict.values(), key=lambda x: abs(x['rel_elevation']))
@@ -117,13 +120,15 @@ def make_sim(cache_root='',
              height=2276,
              width=4552,
              fov=90,
-             reading=False):
+             reading=False,
+             raw=False):
   sim = Refer360Simulator(cache_root,
                           output_image_shape=(image_h, image_w),
                           height=height,
                           width=width,
                           fov=fov,
-                          reading=reading)
+                          reading=reading,
+                          raw=raw)
   return sim
 
 
@@ -171,8 +176,6 @@ class Refer360ImageFeatures(object):
   @staticmethod
   def add_args(argument_parser):
     argument_parser.add_argument('--refer360_image_feature_type', nargs='+',
-                                 choices=['none', 'random',
-                                          'mean_pooled', 'butd', 'prior'],
                                  default=['mean_pooled'])
     argument_parser.add_argument('--refer360_image_feature_model',
                                  choices=['resnet',
@@ -438,13 +441,13 @@ class Refer360EnvBatch():
                cache_root='',
                height=2276,
                width=4552,
-               args=None,
-               reading=False):
+               sim_cache=None,
+               args=None):
     self.sims = []
     self.batch_size = batch_size
     self.beam_size = beam_size
     self.cache_root = cache_root
-    self.reading = reading
+
     if args:
       if args.prefix in ['refer360', 'r360tiny']:
         width, height = 4552, 2276
@@ -453,17 +456,24 @@ class Refer360EnvBatch():
       else:
         raise NotImplementedError()
       self.reading = args.use_reading
+      self.raw = args.use_raw
+    else:
+      raise NotImplementedError()
+
+    self.sim_cache = sim_cache
+
     sim = make_sim(cache_root,
                    image_w=Refer360ImageFeatures.IMAGE_W,
                    image_h=Refer360ImageFeatures.IMAGE_H,
                    fov=Refer360ImageFeatures.VFOV,
                    height=height,
                    width=width,
-                   reading=self.reading)
+                   reading=self.reading,
+                   raw=self.raw)
 
     for i in range(batch_size):
       beam = []
-      for j in range(beam_size):
+      for j in range(self.beam_size):
         beam.append(copy.deepcopy(sim))
       self.sims.append(beam)
 
@@ -473,22 +483,33 @@ class Refer360EnvBatch():
     else:
       return (s[0] for s in self.sims)
 
-  def newEpisodes(self, scanIds, viewpointIds, headings, beamed=False):
+  def newEpisodes(self, scanIds, viewpointIds, headings, imgs, beamed=False):
+
     assert len(scanIds) == len(viewpointIds)
     assert len(headings) == len(viewpointIds)
     assert len(scanIds) == len(self.sims)
+    assert len(imgs) == len(viewpointIds)
     world_states = []
-    for i, (scanId, viewpointId, heading) in enumerate(zip(scanIds, viewpointIds, headings)):
+    for i, (scanId, viewpointId, heading, img) in enumerate(zip(scanIds, viewpointIds, headings, imgs)):
       if self.reading:
-        world_state = ReadingWorldState(scanId, viewpointId, heading, 0, 4, 0)
+        world_state = ReadingWorldState(
+            scanId, viewpointId, heading, 0, 4, img, 0)
       else:
-        world_state = WorldState(scanId, viewpointId, heading, 0, 4)
+        world_state = WorldState(scanId, viewpointId, heading, 0, 4, img)
 
       if beamed:
         world_states.append([world_state])
       else:
         world_states.append(world_state)
+
+      if self.sim_cache:
+        sim = self.sim_cache[scanId]
+        sim.set_pano(scanId)
+        sim.look_fov(viewpointId)
+        sim.newEpisode(world_state)
+        self.sims[i][0] = sim
       load_world_state(self.sims[i][0], world_state)
+
     assert len(world_states) == len(scanIds)
     return world_states
 
@@ -501,8 +522,8 @@ class Refer360EnvBatch():
       load_world_state(sim, world_state)
       return _get_panorama_states(sim,
                                   reading=reading)
-    return structured_map(f, self.sims_view(beamed), world_states, [reading] * len(world_states),
-                          nested=beamed)
+    readings = [[reading]*len(ws) for ws in world_states]
+    return structured_map(f, self.sims_view(beamed), world_states, readings, nested=beamed)
 
   def makeActions(self, world_states, actions, last_obs, beamed=False):
     ''' Take an action using the full state dependent action interface (with batched input).
@@ -569,6 +590,7 @@ def load_datasets(splits,
     datum['scan'] = datum['img_src'].split('/')[-1].split('.')[0]
     datum['heading'] = 0
     datum['elevation'] = 0
+    datum['img'] = None
 
     if reading:
       instructions = ' '.join([' '.join(refexp)
@@ -629,40 +651,28 @@ class Refer360Batch(R2RBatch):
                splits=['train'],
                tokenizer=None,
                instruction_limit=None,
+               sim_cache=None,
                args=None):
-    batch_size = args.batch_size
-    seed = args.seed
-    beam_size = args.beam_size
-    language = args.language
-    refer360_data = args.refer360_data
-    cache_root = args.cache_root
-    use_intermediate = args.use_intermediate
-    use_gt_actions = args.use_gt_actions
-    use_visited_embeddings = args.use_visited_embeddings
-    use_oracle_embeddings = args.use_oracle_embeddings
-    use_absolute_location_embeddings = args.use_absolute_location_embeddings
-    use_stop_embeddings = args.use_stop_embeddings
-    use_timestep_embeddings = args.use_timestep_embeddings
-    angle_inc = args.angle_inc
 
     self.deaf = args.deaf
     self.blind = args.blind
     self.reading = args.use_reading
     self.num_views = Refer360ImageFeatures.NUM_VIEWS
-    self.angle_inc = angle_inc
+    self.angle_inc = args.angle_inc
     self.image_features_list = image_features_list
     self.data = []
     self.scans = []
     self.gt = {}
     self.tokenizer = tokenizer
-    self.language = language
+    self.sim_cache = sim_cache
+    self.language = args.language
 
     counts = defaultdict(int)
 
     print('loading splits:', splits)
     refer360_data = load_datasets(splits,
-                                  root=refer360_data,
-                                  use_intermediate=use_intermediate,
+                                  root=args.refer360_data,
+                                  use_intermediate=args.use_intermediate,
                                   reading=self.reading)
 
     total_unk, total_found, all_unk = 0, 0, set()
@@ -696,7 +706,7 @@ class Refer360Batch(R2RBatch):
             for sid, sentence in enumerate(instr):
               accumulate_sentence += sentence
               enc, length, n_unk, n_found, unk = tokenizer.encode_sentence(
-                  accumulate_sentence, language=language)
+                  accumulate_sentence, language=args.language)
               reading_instr_encodings.append(enc)
               reading_instr_lengths.append(length)
               total_found += n_found
@@ -706,7 +716,7 @@ class Refer360Batch(R2RBatch):
             new_item['reading_instr_lengths'] = reading_instr_lengths
           else:
             new_item['instr_encoding'], new_item['instr_length'], n_unk, n_found, unk = tokenizer.encode_sentence(
-                instr, language=language)
+                instr, language=args.language)
           total_found += n_found
           total_unk += n_unk
           all_unk |= unk
@@ -720,16 +730,16 @@ class Refer360Batch(R2RBatch):
       print('UNK vocab:\n', all_unk)
     self.scans = set(self.scans)
     self.splits = splits
-    self.seed = seed
+    self.seed = args.seed
     random.seed(self.seed)
     random.shuffle(self.data)
     self.instr_id_to_idx = {}
     for i, item in enumerate(self.data):
       self.instr_id_to_idx[item['instr_id']] = i
     self.ix = 0
-    self.batch_size = batch_size
-    self.set_beam_size(beam_size,
-                       cache_root=cache_root,
+    self.batch_size = args.batch_size
+    self.set_beam_size(args.beam_size,
+                       cache_root=args.cache_root,
                        args=args)
     self.print_progress = False
     print('Refer360Batch loaded with %d instructions, using splits: %s' %
@@ -738,21 +748,22 @@ class Refer360Batch(R2RBatch):
     self.notTest = ('test' not in splits)
     self.paths = self.env.sims[0][0].paths
     self.distances = self.env.sims[0][0].distances
-    if use_gt_actions and 'train' in splits:
+    if args.use_gt_actions and 'train' in splits:
       self._action_fn = self._gt_action
       print('will use ground-truth actions')
     else:
       self._action_fn = self._shortest_path_action
       print('will use shortest path actions')
-    self.use_visited_embeddings = use_visited_embeddings
+    self.use_visited_embeddings = args.use_visited_embeddings
     if self.use_visited_embeddings == 'pe':
       self.visited_pe = PositionalEncoding(64, 0, max_len=1000)
     else:
       self.visited_pe = None
-    self.use_oracle_embeddings = use_oracle_embeddings
-    self.use_absolute_location_embeddings = use_absolute_location_embeddings
-    self.use_stop_embeddings = use_stop_embeddings
-    self.use_timestep_embeddings = use_timestep_embeddings
+    self.use_oracle_embeddings = args.use_oracle_embeddings
+    self.use_absolute_location_embeddings = args.use_absolute_location_embeddings
+    self.use_stop_embeddings = args.use_stop_embeddings
+    self.use_timestep_embeddings = args.use_timestep_embeddings
+    self.raw = args.use_raw
     if self.use_timestep_embeddings:
       self.timestep_pe = PositionalEncoding(64, 0, max_len=1000)
 
@@ -777,6 +788,7 @@ class Refer360Batch(R2RBatch):
       self.beam_size = beam_size
       self.env = Refer360EnvBatch(self.batch_size, beam_size,
                                   cache_root=cache_root,
+                                  sim_cache=self.sim_cache,
                                   args=args)
 
   def _gt_action(self, state, adj_loc_list, goalViewpointId, gt_path,
@@ -857,90 +869,81 @@ class Refer360Batch(R2RBatch):
     path_len = len(path) - 1
     return 1.0 - float(path_len) / given_path_len
 
-  def observe(self, world_states, beamed=False, include_teacher=True, instr_id=None):
-    # start_time = time.time()
+  def observe(self, world_states,
+              beamed=False,
+              include_teacher=True,
+              instr_id=None,
+              debug=False):
+
     obs = []
 
-    for i, states_beam in enumerate(self.env.getStates(world_states,
-                                                       beamed=beamed,
-                                                       reading=self.env.reading)):
-      item = self.batch[i]
+    for kk, states_beam in enumerate(self.env.getStates(world_states,
+                                                        beamed=beamed,
+                                                        reading=self.env.reading)):
+      item = self.batch[kk]
+      idx = {int(k.split('_')[-1]): int(k.split('_')[-1])
+             for k in item.keys() if 'gt_actions_path_' in k}[kk]
+
       obs_batch = []
+
       for state, adj_loc_list in states_beam if beamed else [states_beam]:
+
         if item['scan'] != state.scanId:
           item = self.data[self.instr_id_to_idx[instr_id]]
           assert item['scan'] == state.scanId
-        feature = [featurizer.get_features(state)
-                   for featurizer in self.image_features_list]
-        # assert len(feature) == 1, 'for now, only work with MeanPooled feature'
-
-        if len(feature) == 1:
-          feature_with_loc = np.concatenate(
-              (feature[0], self._static_loc_embeddings[state.viewIndex]), axis=-1)
-        elif len(feature) == 2:
-          feature_with_loc = np.concatenate(
-              (feature[0], feature[1], self._static_loc_embeddings[state.viewIndex]), axis=-1)
-        else:
-          raise NotImplementedError(
-              'for now, only work with MeanPooled feature or with Rand features')
-        action_embedding = _build_action_embedding(adj_loc_list, feature,
-                                                   reading=self.env.reading)
-
-        instr_ids = []
-        for jj, states_beam in enumerate(self.env.getStates(world_states,
-                                                            beamed=beamed,
-                                                            reading=self.env.reading)):
-          temp_item = self.batch[jj]
-          instr_ids.append(temp_item['instr_id'])
+          idx = max([int(k.split('_')[-1])
+                     for k in item.keys() if 'gt_actions_path_' in k])
 
         teacher_action, new_path = self._action_fn(
             state, adj_loc_list, item['gt_actions_path_{}'.format(
-                i)][-1], item['gt_actions_path_{}'.format(i)],
+                idx)][-1], item['gt_actions_path_{}'.format(idx)],
             debug={'path': item['path'],
-                    'teacher': item['teacher_list_{}'.format(i)],
-                   'timestep': item['timestep_{}'.format(i)],
-                   'visited': item['prev_visit_{}'.format(i)],
-                   'inst_ids': instr_ids,
+                   'teacher': item['teacher_list_{}'.format(idx)],
+                   'timestep': item['timestep_{}'.format(idx)],
+                   'visited': item['prev_visit_{}'.format(idx)],
                    'instr_id': item['instr_id']},
         )
+        fov_emb_list = [featurizer.get_features(state)
+                        for featurizer in self.image_features_list]
+
+        action_embedding = _build_action_embedding(adj_loc_list, fov_emb_list,
+                                                   reading=self.env.reading)
+        act_emb_list = [action_embedding]
+
+        fov_emb_list += [self._static_loc_embeddings[state.viewIndex]]
 
         if self.use_absolute_location_embeddings:
-          abs_loc_emb = build_absolute_location_embedding(adj_loc_list,
-                                                          state.heading,
-                                                          state.elevation)
-          action_embedding = np.concatenate(
-              (action_embedding, abs_loc_emb), axis=-1)
+          act_emb_list += [build_absolute_location_embedding(adj_loc_list,
+                                                             state.heading,
+                                                             state.elevation)]
 
         if self.use_visited_embeddings:
-          item['visited_viewpoints_{}'.format(i)][state.viewpointId] += 1.0
-          visited_embedding = build_visited_embedding(
-              adj_loc_list, item['visited_viewpoints_{}'.format(i)],
+          item['visited_viewpoints_{}'.format(idx)][state.viewpointId] += 1.0
+          act_emb_list += [build_visited_embedding(
+              adj_loc_list, item['visited_viewpoints_{}'.format(idx)],
               visited_type=self.use_visited_embeddings,
-              visited_pe=self.visited_pe)
-          action_embedding = np.concatenate(
-              (action_embedding, visited_embedding), axis=-1)
+              visited_pe=self.visited_pe)]
+
         if self.use_oracle_embeddings:
-          oracle_embedding = build_oracle_embedding(
-              adj_loc_list, teacher_action)
-          action_embedding = np.concatenate(
-              (action_embedding, oracle_embedding), axis=-1)
+          act_emb_list += [build_oracle_embedding(
+              adj_loc_list, teacher_action)]
+
         if self.use_stop_embeddings:
-          stop_embedding = build_stop_embedding(
-              adj_loc_list)
-          action_embedding = np.concatenate(
-              (action_embedding, stop_embedding), axis=-1)
+          act_emb_list += [build_stop_embedding(
+              adj_loc_list)]
+
         if self.use_timestep_embeddings:
-          timestep_embedding = build_timestep_embedding(
-              adj_loc_list, len(item['path']), self.timestep_pe)
-          action_embedding = np.concatenate(
-              (action_embedding, timestep_embedding), axis=-1)
+          act_emb_list += [build_timestep_embedding(
+              adj_loc_list, len(item['path']), self.timestep_pe)]
 
         if self.env.reading:
-          reading_embedding = build_reading_embedding(
-              adj_loc_list)
-          action_embedding = np.concatenate(
-              (action_embedding, reading_embedding), axis=-1)
+          act_emb_list += [build_reading_embedding(
+              adj_loc_list)]
 
+        fov_features = np.concatenate(
+            tuple(fov_emb_list), axis=-1)
+        action_embedding = np.concatenate(
+            tuple(act_emb_list), axis=-1)
         instructions = '. . .' if self.deaf else item['instructions']
         ob = {
             'instr_id': item['instr_id'],
@@ -949,17 +952,17 @@ class Refer360Batch(R2RBatch):
             'viewIndex': state.viewIndex,
             'heading': state.heading,
             'elevation': state.elevation,
-            'feature': [feature_with_loc],
+            'feature': [fov_features],
             'adj_loc_list': adj_loc_list,
             'action_embedding': action_embedding,
             'instructions': instructions,
         }
         if include_teacher and self.notTest:
           ob['teacher'] = teacher_action
-          item['teacher_list_{}'.format(i)] += [teacher_action]
-          item['timestep_{}'.format(i)] += 1
-          item['prev_visit_{}'.format(i)] += [state.viewpointId]
-          self.batch[i]['gt_actions_path_{}'.format(i)] = new_path
+          item['teacher_list_{}'.format(idx)] += [teacher_action]
+          item['timestep_{}'.format(idx)] += 1
+          item['prev_visit_{}'.format(idx)] += [state.viewpointId]
+          self.batch[idx]['gt_actions_path_{}'.format(idx)] = new_path
           ob['deviation'] = self._deviation(state, item['path'])
           ob['progress'] = self._progress(state, item['path']),
           ob['distance'] = self._distance(state, item['path']),
@@ -984,4 +987,7 @@ class Refer360Batch(R2RBatch):
       else:
         assert len(obs_batch) == 1
         obs.append(obs_batch[0])
+      if debug:
+        pdb.set_trace()
+
     return obs
