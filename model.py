@@ -583,7 +583,6 @@ class CogroundDecoderLSTM(nn.Module):
     alpha_text = self.sm(_alpha_text)
 
     batch_size, a_size, _ = all_u_t.size()
-
     g_v = all_u_t.view(-1, self.feature_size)
     g_v = self.visual_mlp(g_v).view(batch_size, a_size, -1)
     attn_vision, _alpha_vision = self.visual_attention_layer(
@@ -1442,6 +1441,7 @@ class SpeakerDecoderLSTM(nn.Module):
     self.vocab_size = vocab_size
     self.vocab_embedding_size = vocab_embedding_size
     self.hidden_size = hidden_size
+
     self.embedding = nn.Embedding(vocab_size, vocab_embedding_size)
     self.use_glove = wordvec is not None
     if self.use_glove:

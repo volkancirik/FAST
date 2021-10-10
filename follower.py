@@ -17,7 +17,7 @@ import torch.distributions as D
 from utils import vocab_pad_idx, vocab_eos_idx, flatten, structured_map, try_cuda
 from utils import PriorityQueue
 from running_mean_std import RunningMean
-
+import pdb
 InferenceState = namedtuple(
     'InferenceState', 'prev_inference_state, world_state, observation, flat_index, last_action, last_action_embedding, action_count, score, h_t, c_t, last_alpha')
 SearchState = namedtuple(
@@ -1422,7 +1422,7 @@ class Seq2SeqAgent(BaseAgent):
       all_u_t, is_valid, is_valid_numpy = self._action_variable(flat_obs)
 
       assert len(f_t_list) == 1, 'for now, only work with MeanPooled feature'
-      h_t, c_t, alpha, logit, alpha_v = self.decoder(
+      h_t, c_t, alpha, _, _, logit, alpha_v = self.decoder(
           u_t_prev, all_u_t, f_t_list[0], h_t[flat_indices], c_t[flat_indices], ctx[beam_indices], seq_mask[beam_indices])
 
       # Mask outputs of invalid actions
@@ -1648,7 +1648,7 @@ class Seq2SeqAgent(BaseAgent):
       c_t = torch.cat(c_t_list, dim=0)
 
       assert len(f_t_list) == 1, 'for now, only work with MeanPooled feature'
-      h_t, c_t, alpha, logit, alpha_v = self.decoder(
+      h_t, c_t, _, _, alpha, logit, alpha_v = self.decoder(
           u_t_prev, all_u_t, f_t_list[0], h_t, c_t, ctx[beam_indices], seq_mask[beam_indices])
 
       # Mask outputs of invalid actions
@@ -1675,7 +1675,8 @@ class Seq2SeqAgent(BaseAgent):
       assert action_scores.size() == action_indices.size()
 
       start_index = 0
-      assert len(beams) == len(world_states)
+      assert len(beams) == len(world_states), 'len(beams) == len(world_states) {} != {}'.format(
+          len(beams), len(world_states))
       all_successors = []
       for beam_index, (beam, beam_world_states) in enumerate(zip(beams, world_states)):
         successors = []
@@ -1801,7 +1802,7 @@ class Seq2SeqAgent(BaseAgent):
         [inf_state.world_state for inf_state in comp_l]
         for comp_l in completed_list
     ]
-    completed_obs = self.env.observe(completed_ws, beamed=True)
+    completed_obs = self.env.observe(completed_ws, beamed=True, debug=False)
     completed_list = structured_map(lambda inf_state, obs: inf_state._replace(observation=obs),
                                     completed_list, completed_obs, nested=True)
     # TODO: consider moving observations and this update earlier so that we don't have to traverse as far back

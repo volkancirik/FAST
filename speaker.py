@@ -94,7 +94,7 @@ def batch_observations_and_actions(path_obs, path_actions, encoded_instructions)
 class Seq2SeqSpeaker(object):
   feedback_options = ['teacher', 'argmax', 'sample']
 
-  def __init__(self, env, results_path, encoder, decoder, instruction_len, max_episode_len=10):
+  def __init__(self, env, results_path, encoder, decoder, instruction_len=80, max_episode_len=10):
     self.env = env
     self.results_path = results_path
     random.seed(1)
