@@ -298,6 +298,7 @@ def make_more_train_env(args, train_vocab_path, train_splits):
 
   image_features_list = ImgFeatures.from_args(args)
   vocab = read_vocab(train_vocab_path, args.language)
+
   tok = Tokenizer(vocab=vocab)
   sim_cache = None
   if args.use_raw:
@@ -353,6 +354,7 @@ def make_follower(args, vocab,
 
   Decoder = DECODER2MODEL[args.decoder]
   word_embedding_size = get_word_embedding_size(args)
+
   encoder = try_cuda(Encoder(len(vocab), word_embedding_size, enc_hidden_size, vocab_pad_idx, args.dropout_ratio,
                              bidirectional=args.bidirectional,
                              num_layers=args.encoder_num_layers,
@@ -478,6 +480,7 @@ def make_env_and_models(args, train_vocab_path, train_splits, test_splits):
   image_features_list = ImgFeatures.from_args(args)
 
   vocab = read_vocab(train_vocab_path, args.language)
+  print('vocab size:',len(vocab))
   tok = Tokenizer(vocab=vocab)
   sim_cache = None
   if args.use_raw:
@@ -664,7 +667,7 @@ def make_arg_parser():
   parser.add_argument('--beam_size', type=int, default=1)
 
   parser.add_argument('--prefix', type=str, default='R2R')
-  parser.add_argument('--language', type=str, default='en-ALL')
+  parser.add_argument('--language', type=str, default='')
   parser.add_argument('--wordvec_path', type=str,
                       default='tasks/R2R/data/train_glove')
   parser.add_argument('--wordvec_finetune', action='store_true')

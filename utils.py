@@ -323,7 +323,7 @@ def get_arguments(arg_parser):
 
   if args.prefix in ['refer360', 'r360tiny', 'touchdown', 'td']:
     args.env = 'refer360'
-    args.language = 'refer360big'
+    args.language = 'refer360big' if not args.language else args.language
 
     if args.metrics == 'success':
       args.metrics = 'fov_accuracy'
@@ -331,6 +331,7 @@ def get_arguments(arg_parser):
       args.refer360_image_feature_type = ['none']
   else:
     args.env = 'r2r'
+    args.language = 'en-ALL'
 
   if args.use_reading:
     args.feedback_method = 'teacher'
